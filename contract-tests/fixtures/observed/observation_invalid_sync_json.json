@@ -1,0 +1,60 @@
+{
+  "story": "observation_invalid_sync_json",
+  "steps": [
+    {
+      "name": "When the phone sends a truncated JSON object",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 500,
+      "body_kind": "text",
+      "body": "500: io.ktor.server.plugins.BadRequestException: Failed to convert request body to class org.kotatsu.model.history.HistoryPackage"
+    },
+    {
+      "name": "And when the history field has the wrong JSON type",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 500,
+      "body_kind": "text",
+      "body": "500: io.ktor.server.plugins.BadRequestException: Failed to convert request body to class org.kotatsu.model.history.HistoryPackage"
+    },
+    {
+      "name": "Then neither parse failure changes the stored history",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 91,
+            "chapters": 10,
+            "created_at": 1710000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 910003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/observation",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Observation history",
+              "url": "/manga/observation"
+            },
+            "manga_id": 910003,
+            "page": 4,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1710000001000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    }
+  ]
+}

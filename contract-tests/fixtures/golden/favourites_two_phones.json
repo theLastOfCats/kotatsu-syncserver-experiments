@@ -1,0 +1,385 @@
+{
+  "story": "favourites_two_phones",
+  "steps": [
+    {
+      "name": "Given the first phone reads its library before uploading",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [],
+        "favourites": [],
+        "timestamp": 0
+      }
+    },
+    {
+      "name": "When the first phone adds a category and favourite",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Given the second phone reads the library before its first upload",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Reading",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 900001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/synthetic",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [
+                {
+                  "key": "adventure",
+                  "pinned": false,
+                  "source": "EXAMPLE",
+                  "tag_id": 90001,
+                  "title": "Adventure"
+                }
+              ],
+              "title": "A synthetic manga",
+              "url": "/manga/synthetic"
+            },
+            "manga_id": 900001,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the empty second phone posts its library it learns both rows",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Reading",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 900001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/synthetic",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [
+                {
+                  "key": "adventure",
+                  "pinned": false,
+                  "source": "EXAMPLE",
+                  "tag_id": 90001,
+                  "title": "Adventure"
+                }
+              ],
+              "title": "A synthetic manga",
+              "url": "/manga/synthetic"
+            },
+            "manga_id": 900001,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "Given the first phone reads before deleting",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Reading",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 900001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/synthetic",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [
+                {
+                  "key": "adventure",
+                  "pinned": false,
+                  "source": "EXAMPLE",
+                  "tag_id": 90001,
+                  "title": "Adventure"
+                }
+              ],
+              "title": "A synthetic manga",
+              "url": "/manga/synthetic"
+            },
+            "manga_id": 900001,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the first phone deletes its category and favourite",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the stale second phone reads the tombstones before posting",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000000000,
+            "deleted_at": 1700000002000,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Reading",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000000000,
+            "deleted_at": 1700000002000,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 900001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/synthetic",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [
+                {
+                  "key": "adventure",
+                  "pinned": false,
+                  "source": "EXAMPLE",
+                  "tag_id": 90001,
+                  "title": "Adventure"
+                }
+              ],
+              "title": "A synthetic manga",
+              "url": "/manga/synthetic"
+            },
+            "manga_id": 900001,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the second phone posts its pre-applied tombstones",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Given the first phone reads the deleted library",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000000000,
+            "deleted_at": 1700000002000,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Reading",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000000000,
+            "deleted_at": 1700000002000,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 900001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/synthetic",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [
+                {
+                  "key": "adventure",
+                  "pinned": false,
+                  "source": "EXAMPLE",
+                  "tag_id": 90001,
+                  "title": "Adventure"
+                }
+              ],
+              "title": "A synthetic manga",
+              "url": "/manga/synthetic"
+            },
+            "manga_id": 900001,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the first phone adds the category and favourite again later",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the second phone observes the newer re-add before posting",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000003000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Reading",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9001,
+            "created_at": 1700000003000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 900001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/synthetic",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [
+                {
+                  "key": "adventure",
+                  "pinned": false,
+                  "source": "EXAMPLE",
+                  "tag_id": 90001,
+                  "title": "Adventure"
+                }
+              ],
+              "title": "A synthetic manga",
+              "url": "/manga/synthetic"
+            },
+            "manga_id": 900001,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    }
+  ]
+}

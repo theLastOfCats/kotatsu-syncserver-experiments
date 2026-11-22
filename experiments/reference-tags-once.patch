@@ -1,0 +1,13 @@
+diff --git a/src/main/kotlin/org/kotatsu/model/manga/ModelMapping.kt b/src/main/kotlin/org/kotatsu/model/manga/ModelMapping.kt
+index 7f554db..165cf7f 100644
+--- a/src/main/kotlin/org/kotatsu/model/manga/ModelMapping.kt
++++ b/src/main/kotlin/org/kotatsu/model/manga/ModelMapping.kt
+@@ -10,7 +10,7 @@ fun MangaEntity.toManga() = Manga(
+     contentRating = contentRating?.name,
+     coverUrl = coverUrl,
+     largeCoverUrl = largeCoverUrl,
+-    tags = tags.mapTo(HashSet(tags.size)) { it.toTag() },
++    tags = tags.let { tags -> tags.mapTo(HashSet(tags.size)) { it.toTag() } },
+     state = state?.name,
+     author = author,
+     source = source,

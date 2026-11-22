@@ -1,0 +1,2 @@
+{"variant":"before","mysql_version":"8.4.13","operations":{"history":{"com_select":7,"post_status":204,"readback_status":200},"favourites":{"com_select":8,"post_status":204,"readback_status":200}}}
+{"variant":"after","mysql_version":"8.4.13","operations":{"history":{"com_select":5,"post_status":204,"readback_status":200},"favourites":{"com_select":6,"post_status":204,"readback_status":200}}}

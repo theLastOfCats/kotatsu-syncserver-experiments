@@ -1,0 +1,106 @@
+{
+  "story": "observation_favourites_partial_write",
+  "steps": [
+    {
+      "name": "Given an observation reader signs in",
+      "method": "POST",
+      "path": "/auth",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "token": "[REDACTED]"
+      }
+    },
+    {
+      "name": "And the reader starts with an empty library",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [],
+        "favourites": [],
+        "timestamp": 0
+      }
+    },
+    {
+      "name": "When a later favourite references a missing category",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 500,
+      "body_kind": "text",
+      "body": "500: java.sql.SQLIntegrityConstraintViolationException: (conn=[ID]) Cannot add or update a child row: a foreign key constraint fails (`kotatsu_contract`.`favourites`, CONSTRAINT `fk_favourites_category` FOREIGN KEY (`category_id`, `user_id`) REFERENCES `categories` (`id`, `user_id`) ON DELETE CASCADE)"
+    },
+    {
+      "name": "Then the earlier category and favourite remain persisted",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 91001,
+            "created_at": 1710000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Observation category",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 91001,
+            "created_at": 1710000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 910001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/observation",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Observation favourite",
+              "url": "/manga/observation"
+            },
+            "manga_id": 910001,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": 0
+      }
+    },
+    {
+      "name": "And the rejected favourite's manga was already published",
+      "method": "GET",
+      "path": "/manga/910002",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "alt_title": null,
+        "author": null,
+        "content_rating": null,
+        "cover_url": "https://example.invalid/cover.jpg",
+        "large_cover_url": "",
+        "manga_id": 910002,
+        "nsfw": false,
+        "public_url": "https://example.invalid/manga/observation",
+        "rating": 0.5,
+        "source": "EXAMPLE",
+        "state": null,
+        "tags": [],
+        "title": "Observation favourite",
+        "url": "/manga/observation"
+      }
+    }
+  ]
+}

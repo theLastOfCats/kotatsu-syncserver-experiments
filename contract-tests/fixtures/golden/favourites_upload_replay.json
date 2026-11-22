@@ -1,0 +1,129 @@
+{
+  "story": "favourites_upload_replay",
+  "steps": [
+    {
+      "name": "Given the phone preflights its empty library",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [],
+        "favourites": [],
+        "timestamp": 0
+      }
+    },
+    {
+      "name": "When the phone first uploads a category and favourite",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the initial 204 still persisted both rows",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9203,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Replay shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9203,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Replay manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920003,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the phone replays the identical library",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the repeated 204 leaves exactly one of each row",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9203,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Replay shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9203,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Replay manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920003,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    }
+  ]
+}

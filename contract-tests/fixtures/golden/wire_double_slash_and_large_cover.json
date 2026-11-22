@@ -1,0 +1,192 @@
+{
+  "story": "wire_double_slash_and_large_cover",
+  "steps": [
+    {
+      "name": "Given a double-slash history pull",
+      "method": "GET",
+      "path": "//resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Replay manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920003,
+            "page": 3,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000000000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the phone uploads a null large cover through the raw double-slash path",
+      "method": "POST",
+      "path": "//resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Replay manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920003,
+            "page": 3,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000000000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "Then a normal pull exposes the normalized empty large cover",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Replay manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920003,
+            "page": 3,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000000000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the phone uploads the empty large cover through the double-slash path",
+      "method": "POST",
+      "path": "//resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then a double-slash pull exposes the same empty large cover",
+      "method": "GET",
+      "path": "//resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Replay manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920003,
+            "page": 3,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000000000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "And the double-slash catalog path exposes that wire value",
+      "method": "GET",
+      "path": "//manga/920003",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "alt_title": null,
+        "author": null,
+        "content_rating": null,
+        "cover_url": "https://example.invalid/cover.jpg",
+        "large_cover_url": "",
+        "manga_id": 920003,
+        "nsfw": false,
+        "public_url": "https://example.invalid/manga/sync-contract",
+        "rating": 0.5,
+        "source": "EXAMPLE",
+        "state": null,
+        "tags": [],
+        "title": "Replay manga",
+        "url": "/manga/sync-contract"
+      }
+    }
+  ]
+}

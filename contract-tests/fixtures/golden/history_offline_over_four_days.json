@@ -1,0 +1,195 @@
+{
+  "story": "history_offline_over_four_days",
+  "steps": [
+    {
+      "name": "Given the reader signs in",
+      "method": "POST",
+      "path": "/auth",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "token": "[REDACTED]"
+      }
+    },
+    {
+      "name": "Given a phone uploads history before another goes offline",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "And the first phone advances and deletes that history",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "When the offline phone uploads strictly older progress more than four days later",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 1600000002000,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920004,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Offline history manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920004,
+            "page": 8,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000001000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "Then the old tombstone is still persisted",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 1600000002000,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920004,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Offline history manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920004,
+            "page": 8,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000001000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the first phone later reads that manga again",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then a stale tombstone upload receives the newer reading progress",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920004,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Offline history manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920004,
+            "page": 9,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600432003000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "And the newer reading progress remains persisted",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920004,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Offline history manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920004,
+            "page": 9,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600432003000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    }
+  ]
+}

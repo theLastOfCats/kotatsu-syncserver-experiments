@@ -1,0 +1,337 @@
+{
+  "story": "library_disjoint_snapshots",
+  "steps": [
+    {
+      "name": "Given the reader signs in",
+      "method": "POST",
+      "path": "/auth",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "token": "[REDACTED]"
+      }
+    },
+    {
+      "name": "Given the first phone preflights its empty library",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [],
+        "favourites": [],
+        "timestamp": 0
+      }
+    },
+    {
+      "name": "When the first phone uploads its own manga and category",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "And the second phone preflights before sending its different local manga",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9201,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "First shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9201,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "First manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920001,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "Then its disjoint upload returns both phones' rows",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9201,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "First shelf",
+            "track": true
+          },
+          {
+            "category_id": 9202,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Second shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9201,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "First manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920001,
+            "pinned": true,
+            "sort_key": 1
+          },
+          {
+            "category_id": 9202,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920002,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Second manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920002,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "And the first phone pulls the merged library",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9201,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "First shelf",
+            "track": true
+          },
+          {
+            "category_id": 9202,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Second shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9201,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "First manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920001,
+            "pinned": true,
+            "sort_key": 1
+          },
+          {
+            "category_id": 9202,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920002,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Second manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920002,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the first phone uploads the merged library",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then both sets of rows remain persisted",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9201,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "First shelf",
+            "track": true
+          },
+          {
+            "category_id": 9202,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Second shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9201,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "First manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920001,
+            "pinned": true,
+            "sort_key": 1
+          },
+          {
+            "category_id": 9202,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920002,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Second manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920002,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    }
+  ]
+}

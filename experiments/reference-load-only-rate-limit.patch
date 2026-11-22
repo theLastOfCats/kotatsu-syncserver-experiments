@@ -1,0 +1,26 @@
+diff --git a/src/main/kotlin/org/kotatsu/plugins/Routing.kt b/src/main/kotlin/org/kotatsu/plugins/Routing.kt
+index 9507114..2228f08 100644
+--- a/src/main/kotlin/org/kotatsu/plugins/Routing.kt
++++ b/src/main/kotlin/org/kotatsu/plugins/Routing.kt
+@@ -13,12 +13,20 @@ fun Application.configureRouting() {
+         healthRoutes()
+         deeplinkRoutes()
+ 
+-        rateLimit(RateLimitName("globalApi")) {
++        // Load tests need to exercise the API handlers rather than the shared
++        // 100/minute gate.  This is opt-in for an isolated benchmark pod only;
++        // normal deployments retain the reference contract exactly.
++        val apiRoutes = {
+             authRoutes()
+             userRoutes()
+             favouriteRoutes()
+             historyRoutes()
+             mangaRoutes()
+         }
++        if (System.getenv("KOTATSU_BENCH_UNLIMITED") == "1") {
++            apiRoutes()
++        } else {
++            rateLimit(RateLimitName("globalApi")) { apiRoutes() }
++        }
+     }
+ }

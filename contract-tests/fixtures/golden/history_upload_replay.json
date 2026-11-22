@@ -1,0 +1,109 @@
+{
+  "story": "history_upload_replay",
+  "steps": [
+    {
+      "name": "Given the reader signs in",
+      "method": "POST",
+      "path": "/auth",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "token": "[REDACTED]"
+      }
+    },
+    {
+      "name": "When a phone first uploads its history",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the initial 204 still persisted the row",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Replay manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920003,
+            "page": 3,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000000000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the phone replays the identical history",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the repeated 204 leaves exactly one persisted row",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Replay manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920003,
+            "page": 3,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000000000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "story": "account_isolation",
+  "steps": [
+    {
+      "name": "Given an anonymous visitor requests history",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 401,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "And an anonymous visitor requests favourites",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 401,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "When a separate reader signs in",
+      "method": "POST",
+      "path": "/auth",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "token": "[REDACTED]"
+      }
+    },
+    {
+      "name": "Then the separate reader cannot see the first reader's history",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [],
+        "timestamp": 0
+      }
+    },
+    {
+      "name": "And the separate reader cannot see the first reader's categories or favourites",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [],
+        "favourites": [],
+        "timestamp": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "story": "observation_history_equal_timestamp_revives",
+  "steps": [
+    {
+      "name": "Given the reader starts without history",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [],
+        "timestamp": 0
+      }
+    },
+    {
+      "name": "When a phone uploads its active history",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "And another phone deletes it without advancing updated_at",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the server stores the tombstone",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 91,
+            "chapters": 10,
+            "created_at": 1710000000000,
+            "deleted_at": 1710000002000,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 910003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/observation",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Observation history",
+              "url": "/manga/observation"
+            },
+            "manga_id": 910003,
+            "page": 4,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1710000001000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the offline phone uploads its equally updated active row",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the legacy server has revived the active row",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 91,
+            "chapters": 10,
+            "created_at": 1710000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 910003,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/observation",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Observation history",
+              "url": "/manga/observation"
+            },
+            "manga_id": 910003,
+            "page": 4,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1710000001000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    }
+  ]
+}

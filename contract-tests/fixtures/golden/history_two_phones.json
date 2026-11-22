@@ -1,0 +1,258 @@
+{
+  "story": "history_two_phones",
+  "steps": [
+    {
+      "name": "Given the reader signs in",
+      "method": "POST",
+      "path": "/auth",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "token": "[REDACTED]"
+      }
+    },
+    {
+      "name": "When the first phone uploads reading progress",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the stored history contains that progress",
+      "method": "GET",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1700000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 900001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/synthetic",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [
+                {
+                  "key": "adventure",
+                  "pinned": false,
+                  "source": "EXAMPLE",
+                  "tag_id": 90001,
+                  "title": "Adventure"
+                }
+              ],
+              "title": "A synthetic manga",
+              "url": "/manga/synthetic"
+            },
+            "manga_id": 900001,
+            "page": 3,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1700000000000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When an empty second phone syncs it learns the first phone's history",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1700000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 900001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/synthetic",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [
+                {
+                  "key": "adventure",
+                  "pinned": false,
+                  "source": "EXAMPLE",
+                  "tag_id": 90001,
+                  "title": "Adventure"
+                }
+              ],
+              "title": "A synthetic manga",
+              "url": "/manga/synthetic"
+            },
+            "manga_id": 900001,
+            "page": 3,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1700000000000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the first phone advances",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the stale second phone receives newer progress",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1700000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 900001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/synthetic",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [
+                {
+                  "key": "adventure",
+                  "pinned": false,
+                  "source": "EXAMPLE",
+                  "tag_id": 90001,
+                  "title": "Adventure"
+                }
+              ],
+              "title": "A synthetic manga",
+              "url": "/manga/synthetic"
+            },
+            "manga_id": 900001,
+            "page": 8,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1700000001000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the first phone deletes history without advancing updated_at",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then another phone receives the reading-history deletion",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1700000000000,
+            "deleted_at": 1700000002000,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 900001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/synthetic",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [
+                {
+                  "key": "adventure",
+                  "pinned": false,
+                  "source": "EXAMPLE",
+                  "tag_id": 90001,
+                  "title": "Adventure"
+                }
+              ],
+              "title": "A synthetic manga",
+              "url": "/manga/synthetic"
+            },
+            "manga_id": 900001,
+            "page": 8,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1700000001000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "And the catalog exposes the manga card",
+      "method": "GET",
+      "path": "/manga/900001",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "alt_title": null,
+        "author": null,
+        "content_rating": null,
+        "cover_url": "https://example.invalid/cover.jpg",
+        "large_cover_url": "",
+        "manga_id": 900001,
+        "nsfw": false,
+        "public_url": "https://example.invalid/manga/synthetic",
+        "rating": 0.5,
+        "source": "EXAMPLE",
+        "state": null,
+        "tags": [
+          {
+            "key": "adventure",
+            "pinned": false,
+            "source": "EXAMPLE",
+            "tag_id": 90001,
+            "title": "Adventure"
+          }
+        ],
+        "title": "A synthetic manga",
+        "url": "/manga/synthetic"
+      }
+    }
+  ]
+}

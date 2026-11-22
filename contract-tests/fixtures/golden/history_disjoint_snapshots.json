@@ -1,0 +1,145 @@
+{
+  "story": "history_disjoint_snapshots",
+  "steps": [
+    {
+      "name": "Given the first phone uploads its only reading entry",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "When the second phone uploads a different title it receives both entries",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "First manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920001,
+            "page": 3,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000000000
+          },
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920002,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Second manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920002,
+            "page": 7,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000001000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "Then the first phone also receives both entries on its next sync",
+      "method": "POST",
+      "path": "/resource/history",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "history": [
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920001,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "First manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920001,
+            "page": 3,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000000000
+          },
+          {
+            "chapter_id": 77,
+            "chapters": 12,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920002,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Second manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920002,
+            "page": 7,
+            "percent": 0.25,
+            "scroll": 0.5,
+            "updated_at": 1600000001000
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    }
+  ]
+}

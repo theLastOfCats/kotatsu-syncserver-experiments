@@ -1,0 +1,297 @@
+{
+  "story": "favourites_offline_over_four_days",
+  "steps": [
+    {
+      "name": "Given the first phone preflights an empty library",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [],
+        "favourites": [],
+        "timestamp": 0
+      }
+    },
+    {
+      "name": "And uploads a category and favourite before the second phone goes offline",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "When the first phone preflights before deleting",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9204,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Offline shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9204,
+            "created_at": 1600000000000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920005,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Offline manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920005,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "And deletes both rows",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the returning phone preflights and sees both old tombstones",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9204,
+            "created_at": 1600000000000,
+            "deleted_at": 1600000002000,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Offline shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9204,
+            "created_at": 1600000000000,
+            "deleted_at": 1600000002000,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920005,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Offline manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920005,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the phone uploads its pre-applied tombstones after five offline days",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then both old tombstones remain persisted",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9204,
+            "created_at": 1600000000000,
+            "deleted_at": 1600000002000,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Offline shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9204,
+            "created_at": 1600000000000,
+            "deleted_at": 1600000002000,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920005,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Offline manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920005,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the first phone re-adds both rows later",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then the other phone preflights the newer re-add",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9204,
+            "created_at": 1600432003000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Offline shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9204,
+            "created_at": 1600432003000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920005,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Offline manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920005,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    },
+    {
+      "name": "When the phone uploads its pre-applied re-add",
+      "method": "POST",
+      "path": "/resource/favourites",
+      "status": 204,
+      "body_kind": "empty",
+      "body": null
+    },
+    {
+      "name": "Then both restored rows remain persisted",
+      "method": "GET",
+      "path": "/resource/favourites",
+      "status": 200,
+      "body_kind": "json",
+      "body": {
+        "categories": [
+          {
+            "category_id": 9204,
+            "created_at": 1600432003000,
+            "deleted_at": 0,
+            "order": "MANUAL",
+            "show_in_lib": true,
+            "sort_key": 1,
+            "title": "Offline shelf",
+            "track": true
+          }
+        ],
+        "favourites": [
+          {
+            "category_id": 9204,
+            "created_at": 1600432003000,
+            "deleted_at": 0,
+            "manga": {
+              "alt_title": null,
+              "author": null,
+              "content_rating": null,
+              "cover_url": "https://example.invalid/cover.jpg",
+              "large_cover_url": "",
+              "manga_id": 920005,
+              "nsfw": false,
+              "public_url": "https://example.invalid/manga/sync-contract",
+              "rating": 0.5,
+              "source": "EXAMPLE",
+              "state": null,
+              "tags": [],
+              "title": "Offline manga",
+              "url": "/manga/sync-contract"
+            },
+            "manga_id": 920005,
+            "pinned": true,
+            "sort_key": 1
+          }
+        ],
+        "timestamp": "[TIMESTAMP]"
+      }
+    }
+  ]
+}
