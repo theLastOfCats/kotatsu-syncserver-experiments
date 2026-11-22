@@ -29,7 +29,6 @@ import jakarta.mail.internet.MimeMultipart
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -72,8 +71,16 @@ private data class RecoveryRecipient(val id: Long, val email: String)
 
 private val secureRandom = SecureRandom()
 private val argon2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id)
-// Bound simultaneous 64 MiB password operations independently of request concurrency.
-private val passwordPermits = Semaphore(2)
+internal class PasswordBusyException : RuntimeException()
+
+private suspend fun <T> withPasswordPermit(permits: Semaphore, block: suspend () -> T): T {
+    if (!permits.tryAcquire()) throw PasswordBusyException()
+    try {
+        return block()
+    } finally {
+        permits.release()
+    }
+}
 
 private class JwtMaterial(secret: String) {
     val algorithm = Algorithm.HMAC256(secret)
@@ -91,7 +98,7 @@ private fun jwtMaterial(secret: String): JwtMaterial {
     }
 }
 
-private suspend fun hashPassword(password: String): String = passwordPermits.withPermit {
+private suspend fun hashPassword(password: String, permits: Semaphore): String = withPasswordPermit(permits) {
     withContext(Dispatchers.Default) {
         val chars = password.toCharArray()
         try {
@@ -102,7 +109,7 @@ private suspend fun hashPassword(password: String): String = passwordPermits.wit
     }
 }
 
-private suspend fun verifyPassword(password: String, hash: String): Boolean = passwordPermits.withPermit {
+private suspend fun verifyPassword(password: String, hash: String, permits: Semaphore): Boolean = withPasswordPermit(permits) {
     withContext(Dispatchers.Default) {
         val chars = password.toCharArray()
         try {
@@ -156,11 +163,11 @@ private fun findCredentials(connection: Connection, email: String): Credentials?
         }
     }
 
-private suspend fun authenticate(db: Database, config: Config, request: AuthRequest): AuthSession? {
+private suspend fun authenticate(db: Database, config: Config, request: AuthRequest, permits: Semaphore): AuthSession? {
     var credentials = authTransaction(db) { findCredentials(it, request.email) }
     var generatedHash: String? = null
     if (credentials == null && config.allowNewRegister) {
-        val hash = hashPassword(request.password)
+        val hash = hashPassword(request.password, permits)
         generatedHash = hash
         credentials = authTransaction(db) { connection ->
             // The unique email constraint decides concurrent registrations without overwriting a password.
@@ -178,7 +185,7 @@ private suspend fun authenticate(db: Database, config: Config, request: AuthRequ
         }
     }
     val user = credentials ?: return null
-    if (generatedHash != user.passwordHash && !verifyPassword(request.password, user.passwordHash)) return null
+    if (generatedHash != user.passwordHash && !verifyPassword(request.password, user.passwordHash, permits)) return null
 
     // A reset may have won while Argon2 was running. Do not authenticate an obsolete hash.
     return authTransaction(db, user.id) { connection ->
@@ -396,6 +403,7 @@ private suspend fun consumeReset(db: Database, userId: Long, hash: String, passw
 
 fun Route.authRoutes(db: Database, config: Config) {
     val mailer = RecoveryMailer(config)
+    val passwordPermits = Semaphore(config.passwordConcurrency)
 
     rateLimit(RateLimitName("auth")) {
         post("/auth") {
@@ -409,7 +417,7 @@ fun Route.authRoutes(db: Database, config: Config) {
                 call.respondText("400: java.lang.IllegalArgumentException: $validationError", status = HttpStatusCode.BadRequest)
                 return@post
             }
-            val session = authenticate(db, config, request)
+            val session = authenticate(db, config, request, passwordPermits)
             if (session == null) {
                 call.respondText("Wrong password", status = HttpStatusCode.BadRequest)
             } else {
@@ -439,7 +447,7 @@ fun Route.authRoutes(db: Database, config: Config) {
                 call.respondText(PASSWORD_INVALID, status = HttpStatusCode.BadRequest)
                 return@post
             }
-            val passwordHash = hashPassword(request.password)
+            val passwordHash = hashPassword(request.password, passwordPermits)
             if (consumeReset(db, userId, hash, passwordHash)) {
                 call.respondText("Password has been reset successfully")
             } else {
@@ -460,7 +468,9 @@ fun Route.authRoutes(db: Database, config: Config) {
         }
         if (user == null) call.respond(HttpStatusCode.Unauthorized) else call.respond(user)
     }
+}
 
+fun Route.deeplinkRoutes(config: Config) {
     get("/deeplink/reset-password") {
         val token = call.request.queryParameters["token"]
         if (token.isNullOrBlank()) {

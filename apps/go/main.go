@@ -32,6 +32,11 @@ type app struct {
 	smtpPassword     string
 	smtpFrom         string
 	authLimit        authLimiter
+	apiLimit         authLimiter
+	authPerMinute    int
+	forgotPerWindow  int
+	resetPerWindow   int
+	passwordGate     chan struct{}
 }
 
 func env(name, fallback string) string {
@@ -143,6 +148,13 @@ func (a *app) routes() http.Handler {
 		if strings.HasPrefix(r.URL.Path, "//") {
 			r.URL.Path = "/" + strings.TrimLeft(r.URL.Path, "/")
 			r.URL.RawPath = ""
+		}
+		_, pattern := mux.Handler(r)
+		if pattern != "" && pattern != "GET /{$}" && pattern != "GET /deeplink/reset-password" {
+			if wait := a.apiLimit.take("api", time.Second, a.apiLimit.limit); wait > 0 {
+				rejectRateLimit(w, wait)
+				return
+			}
 		}
 		mux.ServeHTTP(w, r)
 	}))

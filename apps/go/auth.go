@@ -54,14 +54,30 @@ func (a *app) initAuth() error {
 	if len(a.jwtSecret) < 32 {
 		return errors.New("set JWT_SECRET to at least 32 random bytes")
 	}
-	a.authLimit.limit = 5
-	if raw := os.Getenv("AUTH_RATE_LIMIT"); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 1 {
-			return errors.New("invalid AUTH_RATE_LIMIT")
-		}
-		a.authLimit.limit = n
+	passwordConcurrency := 2
+	settings := []struct {
+		name string
+		def  int
+		dest *int
+	}{
+		{"RATE_LIMIT_API_PER_SECOND", 200, &a.apiLimit.limit},
+		{"RATE_LIMIT_AUTH_PER_MINUTE", 5, &a.authPerMinute},
+		{"RATE_LIMIT_FORGOT_PER_10_MINUTES", 5, &a.forgotPerWindow},
+		{"RATE_LIMIT_RESET_PER_10_MINUTES", 5, &a.resetPerWindow},
+		{"RATE_LIMIT_PASSWORD_CONCURRENCY", 2, &passwordConcurrency},
 	}
+	for _, setting := range settings {
+		*setting.dest = setting.def
+		if raw, present := os.LookupEnv(setting.name); present {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 {
+				return fmt.Errorf("invalid %s", setting.name)
+			}
+			*setting.dest = n
+		}
+	}
+	a.passwordGate = make(chan struct{}, passwordConcurrency)
+	a.apiLimit.entries = make(map[string]authWindow)
 	a.authLimit.entries = make(map[string]authWindow)
 	identity := "INTEGER PRIMARY KEY"
 	if a.dialect == "mysql" {
@@ -73,46 +89,70 @@ func (a *app) initAuth() error {
 	return err
 }
 
-func (a *app) throttled(endpoint string, ttl time.Duration, next http.HandlerFunc) http.HandlerFunc {
+func (l *authLimiter) take(key string, ttl time.Duration, limit int) time.Duration {
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !now.Before(l.nextCleanup) {
+		for k, b := range l.entries {
+			if !now.Before(b.deadline) {
+				delete(l.entries, k)
+			}
+		}
+		l.nextCleanup = now.Add(time.Minute)
+	}
+	b := l.entries[key]
+	if !now.Before(b.deadline) {
+		b = authWindow{deadline: now.Add(ttl)}
+	}
+	if b.used >= limit || (b.used == 0 && len(l.entries) >= 65536) {
+		return b.deadline.Sub(now)
+	}
+	b.used++
+	l.entries[key] = b
+	return 0
+}
+
+func rejectRateLimit(w http.ResponseWriter, wait time.Duration) {
+	seconds := (wait + time.Second - 1) / time.Second
+	if seconds < 1 {
+		seconds = 1
+	}
+	w.Header().Set("Retry-After", strconv.FormatInt(int64(seconds), 10))
+	w.WriteHeader(http.StatusTooManyRequests)
+}
+
+func (a *app) throttled(endpoint string, ttl time.Duration, limit int, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
 			ip = r.RemoteAddr
 		}
-		key := endpoint + ":" + ip
-		now := time.Now()
-		l := &a.authLimit
-		l.mu.Lock()
-		if !now.Before(l.nextCleanup) {
-			for k, b := range l.entries {
-				if !now.Before(b.deadline) {
-					delete(l.entries, k)
-				}
-			}
-			l.nextCleanup = now.Add(time.Minute)
-		}
-		b := l.entries[key]
-		if !now.Before(b.deadline) {
-			b = authWindow{deadline: now.Add(ttl)}
-		}
-		allowed := b.used < l.limit && (b.used != 0 || len(l.entries) < 65536)
-		if allowed {
-			b.used++
-			l.entries[key] = b
-		}
-		l.mu.Unlock()
-		if !allowed {
-			w.WriteHeader(http.StatusTooManyRequests)
+		if wait := a.authLimit.take(endpoint+":"+ip, ttl, limit); wait > 0 {
+			rejectRateLimit(w, wait)
 			return
 		}
 		next(w, r)
 	}
 }
 
+func (a *app) passwordWork(w http.ResponseWriter, work func()) bool {
+	select {
+	case a.passwordGate <- struct{}{}:
+		defer func() { <-a.passwordGate }()
+		work()
+		return true
+	default:
+		w.Header().Set("Retry-After", "1")
+		authText(w, http.StatusServiceUnavailable, "Password service is busy")
+		return false
+	}
+}
+
 func (a *app) registerAuth(mux *http.ServeMux) {
-	mux.HandleFunc("POST /auth", a.throttled("auth", time.Minute, a.signIn))
-	mux.HandleFunc("POST /forgot-password", a.throttled("forgot", 10*time.Minute, a.forgot))
-	mux.HandleFunc("POST /reset-password", a.throttled("reset", 10*time.Minute, a.reset))
+	mux.HandleFunc("POST /auth", a.throttled("auth", time.Minute, a.authPerMinute, a.signIn))
+	mux.HandleFunc("POST /forgot-password", a.throttled("forgot", 10*time.Minute, a.forgotPerWindow, a.forgot))
+	mux.HandleFunc("POST /reset-password", a.throttled("reset", 10*time.Minute, a.resetPerWindow, a.reset))
 	mux.HandleFunc("GET /me", a.profile)
 }
 
@@ -179,7 +219,11 @@ func (a *app) signIn(w http.ResponseWriter, r *http.Request) {
 	err := lookup()
 	created := false
 	if errors.Is(err, sql.ErrNoRows) && a.allowNewRegister {
-		res, insertErr := a.db.ExecContext(r.Context(), `INSERT INTO users(email,password_hash) VALUES(?,?)`, in.Email, newHash(in.Password))
+		var passwordHash string
+		if !a.passwordWork(w, func() { passwordHash = newHash(in.Password) }) {
+			return
+		}
+		res, insertErr := a.db.ExecContext(r.Context(), `INSERT INTO users(email,password_hash) VALUES(?,?)`, in.Email, passwordHash)
 		if insertErr == nil {
 			id, err = res.LastInsertId()
 			created = true
@@ -194,9 +238,19 @@ func (a *app) signIn(w http.ResponseWriter, r *http.Request) {
 		authDBError(w)
 		return
 	}
-	if errors.Is(err, sql.ErrNoRows) || (!created && !matchesHash(in.Password, hash)) {
+	if errors.Is(err, sql.ErrNoRows) {
 		authText(w, 400, "Wrong password")
 		return
+	}
+	if !created {
+		var matches bool
+		if !a.passwordWork(w, func() { matches = matchesHash(in.Password, hash) }) {
+			return
+		}
+		if !matches {
+			authText(w, 400, "Wrong password")
+			return
+		}
 	}
 	claims := sessionClaims{UserID: id, Version: version, RegisteredClaims: jwt.RegisteredClaims{Issuer: issuer, Audience: jwt.ClaimStrings{audience}, ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour))}}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(a.jwtSecret))
@@ -316,7 +370,11 @@ func (a *app) reset(w http.ResponseWriter, r *http.Request) {
 		authText(w, 400, passwordLength)
 		return
 	}
-	res, err := a.db.ExecContext(r.Context(), `UPDATE users SET password_hash=?,session_version=session_version+1,reset_hash=NULL,reset_expires=NULL WHERE id=? AND reset_hash=? AND reset_expires>?`, newHash(in.Password), id, hash, time.Now().Unix())
+	var passwordHash string
+	if !a.passwordWork(w, func() { passwordHash = newHash(in.Password) }) {
+		return
+	}
+	res, err := a.db.ExecContext(r.Context(), `UPDATE users SET password_hash=?,session_version=session_version+1,reset_hash=NULL,reset_expires=NULL WHERE id=? AND reset_hash=? AND reset_expires>?`, passwordHash, id, hash, time.Now().Unix())
 	if err != nil {
 		authDBError(w)
 		return

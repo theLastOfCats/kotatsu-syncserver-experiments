@@ -1,6 +1,7 @@
 package kotatsu
 
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -17,6 +18,7 @@ import io.ktor.server.plugins.compression.minimumSize
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -24,6 +26,7 @@ import io.ktor.server.routing.routing
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 fun main() {
     val config = Config.fromEnvironment()
@@ -58,29 +61,39 @@ fun Application.applicationModule(database: Database, config: Config) {
         exception<NotFoundException> { call, cause ->
             call.respondText("404: $cause", status = HttpStatusCode.NotFound)
         }
+        exception<PasswordBusyException> { call, _ ->
+            call.response.headers.append(HttpHeaders.RetryAfter, "1")
+            call.respondText("Password service is busy", status = HttpStatusCode.ServiceUnavailable)
+        }
         exception<Throwable> { call, cause ->
             this@applicationModule.log.error("Unhandled request failure", cause)
             call.respondText("Internal Server Error", status = HttpStatusCode.InternalServerError)
         }
     }
     install(RateLimit) {
+        register(RateLimitName("globalApi")) {
+            rateLimiter(limit = config.apiRateLimit, refillPeriod = 1.seconds)
+        }
         register(RateLimitName("auth")) {
             requestKey { it.request.local.remoteHost }
             rateLimiter(limit = config.authRateLimit, refillPeriod = 1.minutes)
         }
         register(RateLimitName("forgotPassword")) {
             requestKey { it.request.local.remoteHost }
-            rateLimiter(limit = 5, refillPeriod = 10.minutes)
+            rateLimiter(limit = config.forgotRateLimit, refillPeriod = 10.minutes)
         }
         register(RateLimitName("resetPassword")) {
             requestKey { it.request.local.remoteHost }
-            rateLimiter(limit = 5, refillPeriod = 10.minutes)
+            rateLimiter(limit = config.resetRateLimit, refillPeriod = 10.minutes)
         }
     }
     install(AutoHeadResponse)
     routing {
         get("/") { call.respondText("Alive", ContentType.Text.Plain) }
-        authRoutes(database, config)
-        syncRoutes(database, config)
+        deeplinkRoutes(config)
+        rateLimit(RateLimitName("globalApi")) {
+            authRoutes(database, config)
+            syncRoutes(database, config)
+        }
     }
 }

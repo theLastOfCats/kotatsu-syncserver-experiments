@@ -21,9 +21,11 @@ if (!string.IsNullOrEmpty(portText) || string.IsNullOrEmpty(configuredUrls))
     builder.WebHost.UseUrls($"http://{(string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host)}:{port}");
 }
 
-var authLimit = ReadLimit("AUTH_RATE_LIMIT", 30);
-var forgotLimit = ReadLimit("FORGOT_PASSWORD_RATE_LIMIT", 5);
-var resetLimit = ReadLimit("RESET_PASSWORD_RATE_LIMIT", 10);
+var apiLimit = ReadLimit("RATE_LIMIT_API_PER_SECOND", 200);
+var authLimit = ReadLimit("RATE_LIMIT_AUTH_PER_MINUTE", 5);
+var forgotLimit = ReadLimit("RATE_LIMIT_FORGOT_PER_10_MINUTES", 5);
+var resetLimit = ReadLimit("RATE_LIMIT_RESET_PER_10_MINUTES", 5);
+var passwordConcurrency = ReadLimit("RATE_LIMIT_PASSWORD_CONCURRENCY", 2);
 builder.Services.AddResponseCompression(options =>
 {
     options.Providers.Add<GzipCompressionProvider>();
@@ -32,11 +34,30 @@ builder.Services.AddResponseCompression(options =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        context.GetEndpoint()?.Metadata.GetMetadata<ApiRateLimitMarker>() is null
+            ? RateLimitPartition.GetNoLimiter("outside-api")
+            : RateLimitPartition.GetFixedWindowLimiter("api", _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = apiLimit,
+                Window = TimeSpan.FromSeconds(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+    options.OnRejected = (rejection, _) =>
+    {
+        var seconds = rejection.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retry)
+            ? Math.Max(1, (int)Math.Ceiling(retry.TotalSeconds))
+            : 1;
+        rejection.HttpContext.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
+        return ValueTask.CompletedTask;
+    };
     options.AddPolicy("auth", context => PerAddress(context, authLimit, TimeSpan.FromMinutes(1)));
     options.AddPolicy("forgot-password", context => PerAddress(context, forgotLimit, TimeSpan.FromMinutes(10)));
     options.AddPolicy("reset-password", context => PerAddress(context, resetLimit, TimeSpan.FromMinutes(10)));
 });
 
+Auth.ConfigurePasswordConcurrency(passwordConcurrency);
 Auth.Initialize();
 SyncRoutes.Initialize();
 
@@ -84,3 +105,5 @@ static RateLimitPartition<string> PerAddress(HttpContext context, int limit, Tim
             QueueLimit = 0,
             AutoReplenishment = true
         });
+
+public sealed class ApiRateLimitMarker { }

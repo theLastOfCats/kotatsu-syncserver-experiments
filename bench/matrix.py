@@ -32,6 +32,13 @@ APPS.update({
     'kotlin-cio': BUILD / 'kotlin-cio/bin/kotatsu-kotlin-cio',
     'kotlin-cio-aot': BUILD / 'kotlin-cio-aot/kotatsu-kotlin',
 })
+RATE_DEFAULTS = {
+    'RATE_LIMIT_API_PER_SECOND': '200',
+    'RATE_LIMIT_AUTH_PER_MINUTE': '5',
+    'RATE_LIMIT_FORGOT_PER_10_MINUTES': '5',
+    'RATE_LIMIT_RESET_PER_10_MINUTES': '5',
+    'RATE_LIMIT_PASSWORD_CONCURRENCY': '2',
+}
 MYSQL = os.getenv('MYSQL_IMAGE', 'docker.io/library/mysql:8.4')
 MAIL = os.getenv('MAILPIT_IMAGE', 'docker.io/axllent/mailpit:latest')
 HTTP = build_opener(ProxyHandler({}))
@@ -182,11 +189,18 @@ def run_cell(args, target, dialect, trial, work):
     port = fresh_port()
     base = f'http://127.0.0.1:{port}'
     env = dict(os.environ, PORT=str(port), BASE_URL=base, JWT_SECRET=secrets.token_hex(32),
-               ALLOW_NEW_REGISTER='true', AUTH_RATE_LIMIT='1000', MAIL_PROVIDER='console',
+               ALLOW_NEW_REGISTER='true', MAIL_PROVIDER='console',
                DATABASE_DIALECT=dialect, DATABASE_PATH=str(work / 'kotatsu.sqlite'))
+    for key in RATE_DEFAULTS:
+        env.pop(key, None)
+    rates = dict(RATE_DEFAULTS)
+    if args.mode != 'verify':
+        ceiling = os.environ.get('RATE_LIMIT_API_PER_SECOND', '1000')
+        env['RATE_LIMIT_API_PER_SECOND'] = rates['RATE_LIMIT_API_PER_SECOND'] = ceiling
     record = {'app': target, 'database': dialect, 'trial': trial, 'mode': args.mode,
               'cpu_affinity': {'app': args.app_cpus, 'client': args.client_cpus, 'mysql': args.mysql_cpus},
               'host': platform.uname().machine, 'kernel': platform.release()}
+    record['rate_limits'] = {key: int(value) for key, value in rates.items()}
     if target.endswith('-aot'):
         with APPS[target].open('rb') as executable:
             record['executable_sha256'] = hashlib.file_digest(executable, 'sha256').hexdigest()
@@ -226,7 +240,6 @@ def run_cell(args, target, dialect, trial, work):
         if args.mode == 'memory':
             record.update(measure_memory(args, target, work, env, pids))
             return record
-        app = stack.enter_context(application(target, work, env, args.app_cpus))
         if args.mode == 'verify':
             results = []
             suites = ['sync', 'history-policy', 'recovery']
@@ -236,10 +249,13 @@ def run_cell(args, target, dialect, trial, work):
                 cmd = [BUILD / 'contract', 'verify', '--base-url', base, '--suite', suite]
                 if suite == 'recovery':
                     cmd.extend(['--mailpit-url', mail_url])
-                results.append(text(*cmd, cwd=ROOT / 'contract-tests'))
-            check_endpoints(port)
+                with application(target, work, env, args.app_cpus):
+                    results.append(text(*cmd, cwd=ROOT / 'contract-tests'))
+            with application(target, work, env, args.app_cpus):
+                check_endpoints(port)
             record['checks'] = results + ['public endpoints verified']
         else:
+            app = stack.enter_context(application(target, work, env, args.app_cpus))
             with PeakRSS(dict(pids, app=app.pid)) as peaks:
                 record['load'] = json.loads(text(*load_command(args, base)))
             if not all(peaks.values()):

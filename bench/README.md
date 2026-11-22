@@ -22,6 +22,22 @@ build/bench/go
 
 For MySQL, provision a separate MySQL 8.4/InnoDB database and a user allowed to create tables in it. Instead of the SQLite settings export `DATABASE_DIALECT=mysql`, `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`, then launch the same executable. Hook up real SMTP with `MAIL_PROVIDER=smtp` and `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` plus any required `SMTP_USERNAME`, `SMTP_PASSWORD`; local development can use console mail. `BASE_URL` is the externally visible origin for recovery links. Keep local mail output private. `ALLOW_NEW_REGISTER=false` disables creating accounts by first login.
 
+### Rate limits
+
+All ports accept these positive integer settings:
+
+| Environment variable | Default | Scope |
+|---|---:|---|
+| `RATE_LIMIT_API_PER_SECOND` | 200 | Shared API budget per instance, including JWT sync and catalog reads |
+| `RATE_LIMIT_AUTH_PER_MINUTE` | 5 | Login and registration per peer IP |
+| `RATE_LIMIT_FORGOT_PER_10_MINUTES` | 5 | Reset email requests per peer IP |
+| `RATE_LIMIT_RESET_PER_10_MINUTES` | 5 | Password reset submissions per peer IP |
+| `RATE_LIMIT_PASSWORD_CONCURRENCY` | 2 | Simultaneous password work shared by login and reset |
+
+JWT sync does not hash passwords and has no separate IP or account quota. Health and reset deeplinks are outside the API budget. Exhausting a request quota returns `429` with `Retry-After`; password workers reject excess work with `503` and `Retry-After: 1` rather than queuing. Each Argon2id operation uses 64 MiB of working memory. The shared API ceiling is a configurable backstop, not a measured capacity or network-level DDoS defense.
+
+IP limits use the direct peer address, not forwarded headers. Behind a reverse proxy, enforce per-client limits at the trusted edge and tune the application's IP quotas for the proxy's aggregate traffic.
+
 ### Separate native AOT builds (Linux x86-64)
 
 `csharp` and `kotlin` remain JIT targets. `csharp-aot` (.NET NativeAOT) and `kotlin-aot` (GraalVM Native Image) are opt-in builds of the same applications, not alternate servers. Install the native compiler toolchain and keep the JDK 21 used by Gradle separate from GraalVM 25; Gradle 9.0.0 does not support running on JDK 25.
@@ -54,8 +70,9 @@ Select a subset with `--apps` and `--databases`. Supply new output paths for eac
 
 To add results for just Rust and Crystal, pass `--apps axum crystal` to each `matrix.py` invocation. Report their two databases with `./bench/report.py FILE --apps axum crystal`; for the original files alone use `--apps go csharp kotlin`. To compare all five applications, pass both JSONL files from the **same profile** to one `report.py` call without `--apps`.
 
-* **Verify:** run the checked-in sync and password recovery snapshots, the history conflict policy (both delivery orders), and HTTP checks for health, HEAD, `/me`, catalog pagination/details and reset links. An acceptance failure exits nonzero; never record new goldens from candidates. An increased auth budget permits isolated fixture creation; sync itself is not rate-limited.
+* **Verify:** run the checked-in sync and password recovery snapshots, the history conflict policy (both delivery orders), and HTTP checks for health, HEAD, `/me`, catalog pagination/details and reset links. Each suite starts a fresh server process against the cell's disposable database, so test suites do not consume one shared login window. It uses the normal rate limits. Never regenerate reference goldens from candidates.
 * **Load:** independent accounts, a persistent HTTP client, and a full library per client. Time changed history upload, identical history replay and the two-request favourites exchange separately. Registration, seeding and final database readback via the HTTP API are outside timed phases. A wrong status or incorrect recovered state invalidates the run rather than adding a fast error to the results.
+* **Rate limits during measurement:** `load` and `memory` keep all limiters active and set `RATE_LIMIT_API_PER_SECOND` to 1000 unless the caller supplies a different value. The runner records the effective configuration. The five-auth default covers the four reader accounts plus the optional importer.
 * **Concurrent import (optional):** `--neighbour-library 500` adds one new account uploading 500 history cards while existing readers update a single page and send their full libraries. Request starts are coordinated on the client; actual overlap inside the database is not assumed. For short imports there may be too few reader completions for a useful p95; the JSON reports the count and omits that percentile below 100 samples.
 * **Metrics:** one operation means a completed user operation, not a SQL statement; the favourites exchange includes both HTTP requests. Individual JSONL records contain sample counts, duration, p50, p95 and aggregate throughput. The report uses the median trial RPS and median trial p95, not an average of percentiles. App and MySQL process RSS are sampled every 100 ms during the client invocation **including setup**; they are not container memory or idle RSS. Separate fresh instances run sequentially in deterministic shuffled order.
 
@@ -175,14 +192,14 @@ Single-client changed-history throughput on MySQL was higher in all three candid
 
 ## Original Ktor reference on MariaDB
 
-The `reference` row is the **original service**, not `apps/kotlin`. It uses Ktor with Netty. The JAR extracted from `localhost/kotatsu-parity-reference:700d5c6` has SHA-256 `0c73622c015798bf3779c6dcbd65c930f851c7aac5e0f294c84faa90ef0fa0e1`. The benchmark uses the same CPU placement and Go HTTP client as the replacements. The original's built-in `KOTATSU_BENCH_UNLIMITED=1` bypasses the global 100 requests/minute limit; these figures measure successful syncs, not rate-limited production traffic. No replacement code or database schema is used.
+The `reference` row is the **original service**, not `apps/kotlin`. It uses Ktor with Netty. The historical JAR extracted from `localhost/kotatsu-parity-reference:700d5c6` has SHA-256 `0c73622c015798bf3779c6dcbd65c930f851c7aac5e0f294c84faa90ef0fa0e1`. The stored figures were collected with the historical runner and exact artifact. Reproduce them from their historical revision. The current runner uses the API ceiling configured in a current original server and records `RATE_LIMIT_API_PER_SECOND` (default 200). No replacement code or database schema is used.
 
 Obtain the original reference JAR separately as described in the [reference setup](../experiments/README.md#original-ktor-baseline).
 
 ```bash
 # From the repository root, with JDK 21 selected in JAVA_HOME.
 ./bench/build.sh tools
-jar=/absolute/path/to/reference.jar
+jar=/absolute/path/to/current-reference.jar
 for n in 4 1; do
   for mode in load memory; do
     python3 bench/reference.py "$mode" --jar "$jar" --clients "$n" --trials 3 \
@@ -209,11 +226,11 @@ The one-client [load](results/reference-load-one.jsonl) and [memory](results/ref
 
 ### Same reference JAR on GraalVM 25.0.5
 
-The reference uses Netty and JIT in both runs. The first run used Temurin 21.0.12.1; the second uses Oracle GraalVM 25.0.5+9.1. Reuse the same JAR, client and MariaDB image. This compares two JDK distributions and versions, not the JDK version in isolation.
+These historical timings use the same Netty reference JAR, client and MariaDB image. Run this recipe from the revision that recorded them. The first run used Temurin 21.0.12.1; the second uses Oracle GraalVM 25.0.5+9.1. This compares two JDK distributions and versions, not the JDK version in isolation.
 
 ```bash
 export JAVA_HOME="$(mise where java@oracle-graalvm-25.0.5)"
-# Use the existing reference JAR; do not run Gradle on JDK 25.
+jar=/absolute/path/to/exact-reference.jar # Do not run Gradle on JDK 25.
 for n in 4 1; do
   for mode in load memory; do
     python3 bench/reference.py "$mode" --jar "$jar" --clients "$n" --trials 3 \
@@ -243,6 +260,7 @@ The original `700d5c6` JAR is the build input; this is not the replacement Kotli
 Two adaptations are compiled into the image only. A Flyway plugin finds the exact JAR's embedded SQL via a build-time index; Flyway still applies the migrations and manages their checksums. A Ktorm substitution identifies generated JDK proxies as non-value classes, avoiding a Kotlin reflection lookup that Native Image does not support. AOT metadata also registers the `UserInfo` serializer for `/me`. The reference JAR and the JIT runs are unchanged.
 
 ```bash
+# Run the historical recipe from the revision that recorded the archived timings.
 ./bench/build.sh tools
 GRAALVM_HOME="$(mise where java@oracle-graalvm-25.0.5)" \
   ./bench/reference-native.sh /path/to/exact-reference.jar
@@ -257,7 +275,7 @@ for n in 4 1; do
 done
 ```
 
-[HTTP verification](results/reference-aot-verified.jsonl) passed 71 sync and 8 recovery steps. The verify command uses separate fresh MariaDB databases for sync and authenticated SMTP recovery. The original rate limits remain active during verification; timed profiles use the same global-rate-limit override as the JIT baseline.
+[HTTP verification](results/reference-aot-verified.jsonl) passed 71 sync and 8 recovery steps. The verify command uses separate fresh MariaDB databases for sync and authenticated SMTP recovery. Rate limits remained active during verification. The archived timings require the historical runner; the current runner does not override the archived binary's built-in cap.
 
 Medians of three trials per profile, with the same Netty server, MariaDB 11.8.9 image, CPU placement and workload. RSS peaks are sampled during authenticated sync after restart.
 
@@ -453,7 +471,7 @@ PostgreSQL remained lowest in this small working set even including page cache a
 
 ## Kotlin 2.4.21 / Ktor 3.6.1 upgrade
 
-Compare the published Kotlin 2.2.20 / Ktor 3.3.0 build (`b040cde59c`) with the upgraded port. Keep a checkout of that commit for the control. Build Netty and CIO from both trees with the same JDK 21 and GraalVM 25.0.5; the AOT build targets also produce the JIT distributions.
+This historical A/B compares Kotlin 2.2.20 / Ktor 3.3.0 (`b040cde59c`) with the upgraded port (`179f72fd77`). Run the recipe at `191016c00b`; the current port adds a shared API limiter and is no longer a dependency-only comparison. Build Netty and CIO from both historical trees with the same JDK 21 and GraalVM 25.0.5; the AOT targets also produce the JIT distributions.
 
 The resolved Netty version moves from 4.2.4.Final to 4.2.17.Final, kotlinx-coroutines from 1.10.2 to 1.11.0 and kotlinx-serialization from 1.9.0 to 1.11.0. The SQLite and MySQL driver versions do not change. The result measures the whole stack upgrade, not a Kotlin compiler effect in isolation.
 

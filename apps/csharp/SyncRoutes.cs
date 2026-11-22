@@ -13,12 +13,13 @@ public static class SyncRoutes
 
     public static void Map(WebApplication app)
     {
-        app.MapMethods("/resource/history", ["GET", "HEAD"], GetHistory);
-        app.MapPost("/resource/history", PostHistory);
-        app.MapMethods("/resource/favourites", ["GET", "HEAD"], GetFavourites);
-        app.MapPost("/resource/favourites", PostFavourites);
-        app.MapMethods("/manga", ["GET", "HEAD"], GetMangaList);
-        app.MapMethods("/manga/{id}", ["GET", "HEAD"], GetManga);
+        var api = app.MapGroup("").WithMetadata(new ApiRateLimitMarker());
+        api.MapMethods("/resource/history", ["GET", "HEAD"], GetHistory);
+        api.MapPost("/resource/history", PostHistory);
+        api.MapMethods("/resource/favourites", ["GET", "HEAD"], GetFavourites);
+        api.MapPost("/resource/favourites", PostFavourites);
+        api.MapMethods("/manga", ["GET", "HEAD"], GetMangaList);
+        api.MapMethods("/manga/{id}", ["GET", "HEAD"], GetManga);
     }
 
     private static long? AuthorizedUser(HttpContext context)

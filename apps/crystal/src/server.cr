@@ -66,6 +66,18 @@ class KotatsuServer
       end
       return
     end
+    path = request.path
+    method = request.method
+    api_route = (method == "POST" && path.in?("/auth", "/forgot-password", "/reset-password")) ||
+                (method == "GET" && (path.in?("/me", "/manga") || path.starts_with?("/manga/"))) ||
+                (method.in?("GET", "POST") && path.in?("/resource/history", "/resource/favourites"))
+    if api_route
+      if retry_after = @app.api_retry_after
+        context.response.status_code = 429
+        context.response.headers["Retry-After"] = retry_after.to_s
+        return
+      end
+    end
     user_id = Auth.user_id(context, @app)
     return if Auth.route(context, @app, user_id)
     return if CrystalSync.route(context, @app, user_id)

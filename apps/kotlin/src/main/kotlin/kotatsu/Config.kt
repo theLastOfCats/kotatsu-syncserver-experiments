@@ -21,7 +21,11 @@ class Config private constructor(
     val smtpUsername: String,
     val smtpPassword: String,
     val smtpFrom: String,
+    val apiRateLimit: Int,
     val authRateLimit: Int,
+    val forgotRateLimit: Int,
+    val resetRateLimit: Int,
+    val passwordConcurrency: Int,
 ) {
     companion object {
         fun fromEnvironment(env: Map<String, String> = System.getenv()): Config {
@@ -49,8 +53,9 @@ class Config private constructor(
             require(mailProvider == "console" || mailProvider == "smtp") { "MAIL_PROVIDER must be console or smtp" }
             val secret = env["JWT_SECRET"]?.takeIf { it.isNotBlank() }
                 ?: throw IllegalArgumentException("JWT_SECRET must be set")
-            val authRateLimit = value("AUTH_RATE_LIMIT", "5").toIntOrNull()?.takeIf { it > 0 }
-                ?: throw IllegalArgumentException("AUTH_RATE_LIMIT must be a positive integer")
+            fun positiveInt(name: String, default: Int): Int =
+                (env[name] ?: default.toString()).toIntOrNull()?.takeIf { it > 0 }
+                    ?: throw IllegalArgumentException("$name must be a positive integer")
             return Config(
                 dialect = dialect,
                 port = serverPort,
@@ -70,7 +75,11 @@ class Config private constructor(
                 smtpUsername = env["SMTP_USERNAME"] ?: "",
                 smtpPassword = env["SMTP_PASSWORD"] ?: "",
                 smtpFrom = value("SMTP_FROM", "no-reply@localhost"),
-                authRateLimit = authRateLimit,
+                apiRateLimit = positiveInt("RATE_LIMIT_API_PER_SECOND", 200),
+                authRateLimit = positiveInt("RATE_LIMIT_AUTH_PER_MINUTE", 5),
+                forgotRateLimit = positiveInt("RATE_LIMIT_FORGOT_PER_10_MINUTES", 5),
+                resetRateLimit = positiveInt("RATE_LIMIT_RESET_PER_10_MINUTES", 5),
+                passwordConcurrency = positiveInt("RATE_LIMIT_PASSWORD_CONCURRENCY", 2),
             )
         }
     }

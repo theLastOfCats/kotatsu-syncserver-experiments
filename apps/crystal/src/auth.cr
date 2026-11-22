@@ -65,6 +65,32 @@ module Auth
     context.response.print(body)
   end
 
+  private def with_password_gate(context : HTTP::Server::Context, app : AppContext, &block : -> T) : T? forall T
+    unless app.acquire_password
+      context.response.headers["Retry-After"] = "1"
+      text(context, 503, "Password service is busy")
+      return nil
+    end
+    result = Channel(Tuple(T?, Exception?)).new(1)
+    begin
+      Fiber::ExecutionContext::Isolated.new("password-hash") do
+        begin
+          result.send({block.call, nil})
+        rescue ex
+          result.send({nil, ex})
+        ensure
+          app.release_password
+        end
+      end
+    rescue ex
+      app.release_password
+      raise ex
+    end
+    value, error = result.receive
+    raise error if error
+    value
+  end
+
   private def token(app : AppContext, user_id : Int64, version : Int64) : String
     header = Base64.urlsafe_encode(%({"alg":"HS256","typ":"JWT"}), padding: false)
     payload = {
@@ -118,10 +144,15 @@ module Auth
     end
     return false unless request.method == "POST" && path.in?("/auth", "/forgot-password", "/reset-password")
     ip = context.remote_address.try { |addr| addr.as?(Socket::IPAddress).try(&.address) } || "unknown"
-    limit = path == "/auth" ? app.auth_rate_limit : 5
+    limit = case path
+            when "/auth"            then app.auth_rate_limit
+            when "/forgot-password" then app.forgot_rate_limit
+            else                         app.reset_rate_limit
+            end
     period = path == "/auth" ? 1.minute : 10.minutes
-    unless app.allowed?(path, ip, limit, period)
+    if retry_after = app.retry_after(path, ip, limit, period)
       context.response.status_code = 429
+      context.response.headers["Retry-After"] = retry_after.to_s
       return true
     end
     json = json_body(context)
@@ -148,13 +179,20 @@ module Auth
     user = app.db.query_one?(sql, email, as: {Int64, String, Int64})
     generated_hash = nil
     if user.nil? && app.allow_register
-      generated_hash = PasswordHash.create(password)
+      generated_hash = with_password_gate(context, app) { PasswordHash.create(password) }
+      return unless generated_hash
       insert = app.dialect == "sqlite" ? "INSERT OR IGNORE" : "INSERT IGNORE"
       app.db.exec "#{insert} INTO app_users (email, password_hash) VALUES (?, ?)", email, generated_hash
       user = app.db.query_one?(sql, email, as: {Int64, String, Int64})
     end
     # Skip a second derivation only if the account still has the hash just created.
-    unless user && (user[1] == generated_hash || PasswordHash.verify(user[1], password))
+    verified = if user && user[1] != generated_hash
+                 with_password_gate(context, app) { PasswordHash.verify(user.not_nil![1], password) }
+               else
+                 !!user
+               end
+    return if verified.nil?
+    unless user && verified
       text(context, 400, "Wrong password")
       return
     end
@@ -198,7 +236,8 @@ module Auth
       text(context, 400, "Password should be from 2 to 24 characters long")
       return
     end
-    hash = PasswordHash.create(password)
+    hash = with_password_gate(context, app) { PasswordHash.create(password) }
+    return unless hash
     updated = app.db.exec("UPDATE app_users SET password_hash = ?, reset_hash = NULL, reset_expires = NULL, token_version = token_version + 1 WHERE id = ? AND reset_hash = ? AND reset_expires >= ?", hash, id, digest, Time.utc.to_unix)
     if updated.rows_affected == 0
       text(context, 400, "Invalid or expired token")

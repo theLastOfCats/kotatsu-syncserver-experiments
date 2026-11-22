@@ -35,6 +35,31 @@ public static class Auth
     private static string smtpPassword = "";
     private static MailboxAddress? smtpFrom;
     private static SecureSocketOptions smtpSecurity;
+    private static SemaphoreSlim passwordGate = new(2, 2);
+
+    public static void ConfigurePasswordConcurrency(int limit) => passwordGate = new SemaphoreSlim(limit, limit);
+
+    private static bool TryHashPassword(string password, out string hash)
+    {
+        hash = "";
+        if (!passwordGate.Wait(0)) return false;
+        try { hash = HashPassword(password); return true; }
+        finally { passwordGate.Release(); }
+    }
+
+    private static bool TryVerifyPassword(string password, string hash, out bool verified)
+    {
+        verified = false;
+        if (!passwordGate.Wait(0)) return false;
+        try { verified = VerifyPassword(password, hash); return true; }
+        finally { passwordGate.Release(); }
+    }
+
+    private static IResult PasswordBusy(HttpContext context)
+    {
+        context.Response.Headers.RetryAfter = "1";
+        return Text("Password service is busy", 503);
+    }
 
     public static void Initialize()
     {
@@ -159,10 +184,11 @@ public static class Auth
         app.MapMethods("/", new[] { "GET", "HEAD" }, (HttpContext context) =>
             HttpMethods.IsHead(context.Request.Method) ? Results.Ok() : Results.Text("Alive"));
         app.MapMethods("/deeplink/reset-password", new[] { "GET", "HEAD" }, DeepLink);
-        app.MapPost("/auth", (Func<HttpContext, Task<IResult>>)Authenticate).RequireRateLimiting("auth");
-        app.MapPost("/forgot-password", (Func<HttpContext, Task<IResult>>)ForgotPassword).RequireRateLimiting("forgot-password");
-        app.MapPost("/reset-password", (Func<HttpContext, Task<IResult>>)ResetPassword).RequireRateLimiting("reset-password");
-        app.MapMethods("/me", new[] { "GET", "HEAD" }, Profile);
+        var api = app.MapGroup("").WithMetadata(new ApiRateLimitMarker());
+        api.MapPost("/auth", (Func<HttpContext, Task<IResult>>)Authenticate).RequireRateLimiting("auth");
+        api.MapPost("/forgot-password", (Func<HttpContext, Task<IResult>>)ForgotPassword).RequireRateLimiting("forgot-password");
+        api.MapPost("/reset-password", (Func<HttpContext, Task<IResult>>)ResetPassword).RequireRateLimiting("reset-password");
+        api.MapMethods("/me", new[] { "GET", "HEAD" }, Profile);
     }
 
     // Every protected route calls this; a signed token is not enough if the account
@@ -234,7 +260,7 @@ public static class Auth
         var account = FindAccount(connection, body.Email);
         if (account is null && allowRegistration)
         {
-            var hash = HashPassword(body.Password);
+            if (!TryHashPassword(body.Password, out var hash)) return PasswordBusy(context);
             try
             {
                 using var command = connection.CreateCommand();
@@ -256,8 +282,9 @@ public static class Auth
                 if (account is null) throw;
             }
         }
-        if (account is null || !VerifyPassword(body.Password, account.PasswordHash))
-            return Text("Wrong password", 400);
+        if (account is null) return Text("Wrong password", 400);
+        if (!TryVerifyPassword(body.Password, account.PasswordHash, out var verified)) return PasswordBusy(context);
+        if (!verified) return Text("Wrong password", 400);
         return Results.Json(new TokenResponse(CreateToken(account.Id, account.SessionVersion)), ResponseJson.TokenResponse);
     }
 
@@ -328,7 +355,7 @@ public static class Auth
         }
         if (body.Password.Length is < 2 or > 24)
             return Text("Password should be from 2 to 24 characters long", 400);
-        var passwordHash = HashPassword(body.Password);
+        if (!TryHashPassword(body.Password, out var passwordHash)) return PasswordBusy(context);
         using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
         command.Transaction = transaction;

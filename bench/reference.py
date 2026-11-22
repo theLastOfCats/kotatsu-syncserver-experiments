@@ -30,10 +30,6 @@ def run_trial(args, trial, work, command, artifact, suite=None):
                ALLOW_NEW_REGISTER='true', MAIL_PROVIDER='console', DATABASE_DIALECT='mariadb',
                DATABASE_HOST='127.0.0.1', DATABASE_NAME='kotatsu', DATABASE_USER='kotatsu',
                DATABASE_PASSWORD=password)
-    if suite:
-        env.pop('KOTATSU_BENCH_UNLIMITED', None)
-    else:
-        env['KOTATSU_BENCH_UNLIMITED'] = '1'
     wrapper = work / 'reference'
     wrapper.write_text('#!/bin/sh\nexec ' + shlex.join([*map(str, command), '-host=127.0.0.1']) + '\n')
     wrapper.chmod(0o700)
@@ -41,7 +37,7 @@ def run_trial(args, trial, work, command, artifact, suite=None):
     record = {'app': 'reference', 'database': 'mariadb', 'trial': trial, 'mode': args.mode,
               'cpu_affinity': {'app': args.app_cpus, 'client': args.client_cpus, 'mariadb': args.mysql_cpus},
               'host': platform.uname().machine, 'kernel': platform.release(),
-              **artifact, 'kotatsu_bench_unlimited': '0' if suite else '1'}
+              **artifact, 'rate_limit_api_per_second': int(env.get('RATE_LIMIT_API_PER_SECOND', '200'))}
     with ExitStack() as stack:
         cid = stack.enter_context(matrix.container(IMAGE, [
             '-p', '127.0.0.1::3306', '-e', 'MARIADB_ROOT_PASSWORD=' + root_password,

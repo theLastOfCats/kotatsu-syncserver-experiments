@@ -41,11 +41,13 @@ Responses support gzip when the client advertises it in `Accept-Encoding`.
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` | host/from required; port `587` | SMTP server and sender mailbox, e.g. `Kotatsu <no-reply@example.com>`. |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | empty | Optional SMTP credentials; provide both or neither. |
 | `SMTP_SECURITY` | `auto` | `auto` uses implicit TLS on port 465, requires STARTTLS with credentials, and otherwise uses STARTTLS when offered. `starttls` requires STARTTLS; `ssl` uses implicit TLS; `none` permits plaintext without credentials. |
-| `AUTH_RATE_LIMIT` | `30` | Per-client-IP `/auth` requests per minute. |
-| `FORGOT_PASSWORD_RATE_LIMIT` | `5` | Per-client-IP `/forgot-password` requests per 10 minutes. |
-| `RESET_PASSWORD_RATE_LIMIT` | `10` | Per-client-IP `/reset-password` requests per 10 minutes. |
+| `RATE_LIMIT_API_PER_SECOND` | `200` | Shared API requests per second, across all clients. |
+| `RATE_LIMIT_AUTH_PER_MINUTE` | `5` | Per-client-IP `/auth` requests per minute. |
+| `RATE_LIMIT_FORGOT_PER_10_MINUTES` | `5` | Per-client-IP `/forgot-password` requests per 10 minutes. |
+| `RATE_LIMIT_RESET_PER_10_MINUTES` | `5` | Per-client-IP `/reset-password` requests per 10 minutes. |
+| `RATE_LIMIT_PASSWORD_CONCURRENCY` | `2` | Maximum concurrent password hashes and verifications. |
 
-Only authentication and recovery are rate limited; sync and catalog requests have no shared rate limit. Limits use the directly connected IP and do not trust forwarded headers. If a reverse proxy is used, its address is therefore the shared client identity for these limits. `AUTH_RATE_LIMIT=1000` is useful for an isolated contract/benchmark run, not a production default.
+Limits must be positive integers. The shared fixed-window API limit applies to authentication, recovery, sync, profile and manga requests; health and deeplink routes are excluded. Authentication and recovery have additional per-route limits keyed by the directly connected IP, without trusting forwarded headers. If a reverse proxy is used, its address is therefore the shared client identity for these limits. Rejected requests return 429 with `Retry-After`. Password hashing and verification do not queue: when all password slots are occupied, requests return 503 with `Retry-After: 1`.
 
 For local Mailpit without credentials, set `MAIL_PROVIDER=smtp`, `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025` and `SMTP_FROM=kotatsu@example.invalid`. The console sender and Mailpit are development facilities; production recovery links should use HTTPS and a trusted SMTP service with TLS.
 

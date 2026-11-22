@@ -4,8 +4,8 @@ mod db;
 mod sync;
 
 use axum::{
-    extract::{DefaultBodyLimit, Query, Request, State},
-    http::{uri::PathAndQuery, StatusCode, Uri},
+    extract::{ConnectInfo, DefaultBodyLimit, Query, Request, State},
+    http::{header::RETRY_AFTER, uri::PathAndQuery, Method, StatusCode, Uri},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::get,
@@ -13,7 +13,7 @@ use axum::{
 };
 use sqlx::AnyPool;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     net::{IpAddr, SocketAddr},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -48,8 +48,29 @@ impl RateKind {
 }
 
 struct RateData {
-    entries: HashMap<(IpAddr, RateKind), VecDeque<Instant>>,
+    entries: HashMap<(IpAddr, RateKind), Window>,
+    global: Window,
     cleaned: Instant,
+}
+
+struct Window {
+    started: Instant,
+    count: usize,
+}
+
+impl Window {
+    fn allow(&mut self, now: Instant, duration: Duration, limit: usize) -> Option<u64> {
+        let elapsed = now.duration_since(self.started);
+        if elapsed >= duration {
+            self.started = now;
+            self.count = 0;
+        } else if self.count >= limit {
+            let remaining = duration - elapsed;
+            return Some(remaining.as_secs() + u64::from(remaining.subsec_nanos() != 0));
+        }
+        self.count += 1;
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -59,34 +80,51 @@ impl RateLimiter {
     fn new() -> Self {
         Self(Arc::new(Mutex::new(RateData {
             entries: HashMap::new(),
+            global: Window { started: Instant::now(), count: 0 },
             cleaned: Instant::now(),
         })))
     }
 
-    fn allow(&self, ip: IpAddr, kind: RateKind, limit: usize) -> bool {
+    fn allow(&self, ip: IpAddr, kind: Option<RateKind>, config: &config::Config) -> Option<u64> {
         let now = Instant::now();
         let mut data = self.0.lock().expect("rate limiter mutex poisoned");
+        if let Some(wait) = data.global.allow(now, Duration::from_secs(1), config.api_rate_limit) {
+            return Some(wait);
+        }
         if now.duration_since(data.cleaned) >= Duration::from_secs(60) {
-            data.entries.retain(|(_, kind), entries| {
-                entries
-                    .back()
-                    .is_some_and(|last| now.duration_since(*last) < kind.window())
-            });
+            data.entries.retain(|(_, kind), window| now.duration_since(window.started) < kind.window());
             data.cleaned = now;
         }
-        let entries = data.entries.entry((ip, kind)).or_default();
-        while entries
-            .front()
-            .is_some_and(|time| now.duration_since(*time) >= kind.window())
-        {
-            entries.pop_front();
-        }
-        if entries.len() >= limit {
-            return false;
-        }
-        entries.push_back(now);
-        true
+        let kind = kind?;
+        let limit = match kind {
+            RateKind::Auth => config.auth_rate_limit,
+            RateKind::Forgot => config.forgot_rate_limit,
+            RateKind::Reset => config.reset_rate_limit,
+        };
+        data.entries
+            .entry((ip, kind))
+            .or_insert(Window { started: now, count: 0 })
+            .allow(now, kind.window(), limit)
     }
+}
+
+async fn limit_api(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let kind = if request.method() == Method::POST {
+        match request.uri().path() {
+            "/auth" => Some(RateKind::Auth),
+            "/forgot-password" => Some(RateKind::Forgot),
+            "/reset-password" => Some(RateKind::Reset),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let ip = request.extensions().get::<ConnectInfo<SocketAddr>>()
+        .expect("connection information missing").0.ip();
+    if let Some(wait) = state.limiter.allow(ip, kind, &state.config) {
+        return (StatusCode::TOO_MANY_REQUESTS, [(RETRY_AFTER, wait.to_string())]).into_response();
+    }
+    next.run(request).await
 }
 
 fn html_escape(value: &str) -> String {
@@ -164,19 +202,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (pool, dialect) = db::connect().await?;
     db::migrate(&pool, &dialect).await?;
     sync::migrate(&pool, &dialect).await?;
+    let hash_slots = Arc::new(Semaphore::new(config.password_concurrency));
     let state = AppState {
         pool,
         dialect,
         config: Arc::new(config),
         limiter: RateLimiter::new(),
         mailer,
-        hash_slots: Arc::new(Semaphore::new(4)),
+        hash_slots,
     };
+    let api = Router::new()
+        .merge(auth::routes())
+        .merge(sync::routes())
+        .route_layer(middleware::from_fn_with_state(state.clone(), limit_api));
     let routes = Router::new()
         .route("/", get(|| async { "Alive" }))
         .route("/deeplink/reset-password", get(reset_deeplink))
-        .merge(auth::routes())
-        .merge(sync::routes())
+        .merge(api)
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .with_state(state);
     // A fallback service is used so URI normalization runs before the inner router matches.

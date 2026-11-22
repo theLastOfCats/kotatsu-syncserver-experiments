@@ -4,8 +4,8 @@ use argon2::{
     Algorithm as Argon2Algorithm, Argon2, Params, Version,
 };
 use axum::{
-    extract::{ConnectInfo, State},
-    http::{header::AUTHORIZATION, HeaderMap, StatusCode},
+    extract::State,
+    http::{header::{AUTHORIZATION, RETRY_AFTER}, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -26,7 +26,6 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::{any::AnyRow, Row};
 use std::{
-    net::SocketAddr,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -35,7 +34,27 @@ const AUDIENCE: &str = "http://0.0.0.0:8080/resource";
 const WRONG_PASSWORD: &str = "Wrong password";
 const INVALID_TOKEN: &str = "Invalid or expired token";
 
-type ApiResult = Result<Response, StatusCode>;
+type ApiResult = Result<Response, ApiError>;
+
+enum ApiError {
+    Status(StatusCode),
+    PasswordBusy,
+}
+
+impl From<StatusCode> for ApiError {
+    fn from(status: StatusCode) -> Self {
+        Self::Status(status)
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        match self {
+            Self::Status(status) => status.into_response(),
+            Self::PasswordBusy => (StatusCode::SERVICE_UNAVAILABLE, [(RETRY_AFTER, "1")], "Password service is busy").into_response(),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub enum Mailer {
@@ -160,13 +179,8 @@ async fn find_user(
         .transpose()
 }
 
-async fn hash_password(state: &AppState, password: String) -> Result<String, StatusCode> {
-    let permit = state
-        .hash_slots
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| failure("hash permit", e))?;
+async fn hash_password(state: &AppState, password: String) -> Result<String, ApiError> {
+    let permit = state.hash_slots.clone().try_acquire_owned().map_err(|_| ApiError::PasswordBusy)?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let salt = SaltString::generate(&mut OsRng);
@@ -177,21 +191,16 @@ async fn hash_password(state: &AppState, password: String) -> Result<String, Sta
             .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| failure("password hash task", e))?
-    .map_err(|e| failure("password hash", e))
+    .map_err(|e| ApiError::from(failure("password hash task", e)))?
+    .map_err(|e| ApiError::from(failure("password hash", e)))
 }
 
 async fn verify_password(
     state: &AppState,
     password: String,
     stored: String,
-) -> Result<bool, StatusCode> {
-    let permit = state
-        .hash_slots
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| failure("hash permit", e))?;
+) -> Result<bool, ApiError> {
+    let permit = state.hash_slots.clone().try_acquire_owned().map_err(|_| ApiError::PasswordBusy)?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
         PasswordHash::new(&stored).ok().is_some_and(|hash| {
@@ -201,7 +210,7 @@ async fn verify_password(
         })
     })
     .await
-    .map_err(|e| failure("password verification task", e))
+    .map_err(|e| ApiError::from(failure("password verification task", e)))
 }
 
 fn password_valid(password: &str) -> bool {
@@ -210,16 +219,8 @@ fn password_valid(password: &str) -> bool {
 
 async fn login(
     State(state): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(request): Json<LoginRequest>,
 ) -> ApiResult {
-    if !state.limiter.allow(
-        addr.ip(),
-        crate::RateKind::Auth,
-        state.config.auth_rate_limit,
-    ) {
-        return Ok(StatusCode::TOO_MANY_REQUESTS.into_response());
-    }
     if !password_valid(&request.password) {
         return Ok((StatusCode::BAD_REQUEST, "400: java.lang.IllegalArgumentException: Password should be from 2 to 24 characters long").into_response());
     }
@@ -262,7 +263,7 @@ async fn login(
                     .await
                     .map_err(|e| failure("finding concurrently created user", e))?;
             }
-            Err(error) => return Err(failure("creating user", error)),
+            Err(error) => return Err(failure("creating user", error).into()),
         }
     }
     let Some((id, stored, version)) = user else {
@@ -341,12 +342,8 @@ async fn me(State(state): State<AppState>, headers: HeaderMap) -> ApiResult {
 
 async fn forgot_password(
     State(state): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(request): Json<ForgotRequest>,
 ) -> ApiResult {
-    if !state.limiter.allow(addr.ip(), crate::RateKind::Forgot, 5) {
-        return Ok(StatusCode::TOO_MANY_REQUESTS.into_response());
-    }
     let mut bytes = [0_u8; 32];
     OsRng.fill_bytes(&mut bytes);
     let token = URL_SAFE_NO_PAD.encode(bytes);
@@ -378,12 +375,8 @@ async fn forgot_password(
 
 async fn reset_password(
     State(state): State<AppState>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(request): Json<ResetRequest>,
 ) -> ApiResult {
-    if !state.limiter.allow(addr.ip(), crate::RateKind::Reset, 5) {
-        return Ok(StatusCode::TOO_MANY_REQUESTS.into_response());
-    }
     let digest = hex::encode(Sha256::digest(request.reset_token.as_bytes()));
     let row = sqlx::query("SELECT id FROM users WHERE reset_hash = ? AND reset_expires_at >= ?")
         .bind(&digest)

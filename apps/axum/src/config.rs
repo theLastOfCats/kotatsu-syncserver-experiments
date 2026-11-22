@@ -20,12 +20,28 @@ pub struct Config {
     pub jwt_secret: String,
     pub base_url: String,
     pub allow_new_register: bool,
+    pub api_rate_limit: usize,
     pub auth_rate_limit: usize,
+    pub forgot_rate_limit: usize,
+    pub reset_rate_limit: usize,
+    pub password_concurrency: usize,
     pub mail: MailConfig,
 }
 
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
+}
+
+fn positive(name: &str, default: usize) -> Result<usize, io::Error> {
+    let value = match env::var(name) {
+        Ok(value) => value.parse::<usize>().map_err(|_| invalid(&format!("invalid {name}")))?,
+        Err(env::VarError::NotPresent) => default,
+        Err(_) => return Err(invalid(&format!("invalid {name}"))),
+    };
+    if value == 0 {
+        return Err(invalid(&format!("{name} must be positive")));
+    }
+    Ok(value)
 }
 
 impl Config {
@@ -44,12 +60,13 @@ impl Config {
             Ok("false") => false,
             _ => return Err(invalid("ALLOW_NEW_REGISTER must be true or false")),
         };
-        let auth_rate_limit = env::var("AUTH_RATE_LIMIT")
-            .unwrap_or_else(|_| "5".into())
-            .parse::<usize>()
-            .map_err(|_| invalid("invalid AUTH_RATE_LIMIT"))?;
-        if auth_rate_limit == 0 {
-            return Err(invalid("AUTH_RATE_LIMIT must be positive"));
+        let api_rate_limit = positive("RATE_LIMIT_API_PER_SECOND", 200)?;
+        let auth_rate_limit = positive("RATE_LIMIT_AUTH_PER_MINUTE", 5)?;
+        let forgot_rate_limit = positive("RATE_LIMIT_FORGOT_PER_10_MINUTES", 5)?;
+        let reset_rate_limit = positive("RATE_LIMIT_RESET_PER_10_MINUTES", 5)?;
+        let password_concurrency = positive("RATE_LIMIT_PASSWORD_CONCURRENCY", 2)?;
+        if password_concurrency > tokio::sync::Semaphore::MAX_PERMITS {
+            return Err(invalid("RATE_LIMIT_PASSWORD_CONCURRENCY is too large"));
         }
         let mail = match env::var("MAIL_PROVIDER")
             .unwrap_or_else(|_| "console".into())
@@ -81,7 +98,11 @@ impl Config {
             jwt_secret,
             base_url,
             allow_new_register,
+            api_rate_limit,
             auth_rate_limit,
+            forgot_rate_limit,
+            reset_rate_limit,
+            password_concurrency,
             mail,
         })
     }
