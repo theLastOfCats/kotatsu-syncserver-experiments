@@ -41,13 +41,14 @@ dependencies {
     implementation("io.ktor:ktor-server-compression-jvm:$ktorVersion")
     implementation("io.ktor:ktor-server-rate-limit-jvm:$ktorVersion")
     implementation("io.ktor:ktor-server-auto-head-response-jvm:$ktorVersion")
-    implementation("com.auth0:java-jwt:4.5.0")
+    implementation(platform("com.fasterxml.jackson:jackson-bom:2.23.0"))
+    implementation("com.auth0:java-jwt:4.6.2")
     implementation("de.mkammerer:argon2-jvm:2.12")
     implementation("com.sun.mail:jakarta.mail:2.0.2")
-    implementation("com.zaxxer:HikariCP:7.0.2")
-    implementation("org.xerial:sqlite-jdbc:3.50.3.0")
-    implementation("com.mysql:mysql-connector-j:9.4.0")
-    runtimeOnly("ch.qos.logback:logback-classic:1.5.19")
+    implementation("com.zaxxer:HikariCP:7.1.0")
+    implementation("org.xerial:sqlite-jdbc:3.54.1.0")
+    implementation("com.mysql:mysql-connector-j:26.10.0")
+    runtimeOnly("ch.qos.logback:logback-classic:1.6.8")
 }
 
 if (serverEngine == "cio") {

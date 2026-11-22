@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Konscious.Security.Cryptography;
+using MailKit;
 using MailKit.Security;
 using Microsoft.AspNetCore.Http.Features;
 using MimeKit;

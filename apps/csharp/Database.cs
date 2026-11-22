@@ -10,6 +10,12 @@ public static class Database
     public static string Dialect { get; } = ReadDialect();
     private static readonly string ConnectionString = MakeConnectionString();
 
+    static Database()
+    {
+        // Root the bundled SQLite provider for NativeAOT instead of relying on reflection.
+        if (Dialect == "sqlite") SQLitePCL.Batteries_V2.Init();
+    }
+
     private static string ReadDialect()
     {
         var dialect = Environment.GetEnvironmentVariable("DATABASE_DIALECT")?.Trim().ToLowerInvariant();
