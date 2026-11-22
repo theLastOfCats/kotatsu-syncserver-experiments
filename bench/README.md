@@ -8,6 +8,8 @@ Install the tools for the targets you want: Go 1.26+ (also needed for test clien
 
 Crystal links against the system `libargon2` for password hashing. On Debian/Ubuntu, install `libargon2-dev` to build; the executable needs `libargon2-1` at runtime.
 
+Axum uses `jsonwebtoken` 10.3 or newer with the RustCrypto provider for HS256; older releases are affected by [CVE-2026-25537](https://github.com/advisories/GHSA-h395-gr6q-cpjc).
+
 ```sh
 ./bench/build.sh                     # or pass individual targets: tools go csharp kotlin axum crystal
 export PORT=8080 BASE_URL=http://127.0.0.1:8080
