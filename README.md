@@ -8,9 +8,9 @@ These are research and benchmarking implementations, **not official Kotatsu rele
 
 ## How the stacks compare
 
-Historical runs of the same authenticated sync workload: four clients, 50 history and 50 favourite entries per account, medians of three trials. All columns come from the post-restart profile: the clients reuse their JWTs, with no registration, password hashing, or neighbouring import.
+Benchmarks with refreshed port dependencies: four clients, 50 history and 50 favourite entries per account, medians of three trials. All columns come from the post-restart profile: the clients reuse their JWTs, with no registration, password hashing, or neighbouring import.
 
-One favourites exchange is a GET plus a POST. RSS is sampled per process, not whole-system memory. The Kotlin port rows come from the Kotlin 2.4.21 / Ktor 3.6.1 upgrade A/B; the other ports use earlier builds. All builds shown predate the unified API limits. Compare complete stacks, not languages in isolation.
+One favourites exchange is a GET plus a POST. RSS is sampled per process, not whole-system memory. All builds ran with the same API ceiling of 1,000 requests/s. These runs compare complete stacks, not individual languages or the effect of a dependency upgrade.
 
 ### SQLite
 
@@ -18,15 +18,15 @@ SQLite runs inside the application, so app RSS includes the database engine. The
 
 | Stack and build | History update, ops/s ↑ | Update p95, ms ↓ | History replay, ops/s ↑ | Favourites exchanges/s ↑ | App idle RSS, MiB ↓ | App peak RSS, MiB ↓ |
 |---|---:|---:|---:|---:|---:|---:|
-| Go · `net/http` | 145.4 | 43.3 | 145.3 | 128.7 | 16.5 | 27.8 |
-| C# · ASP.NET Core JIT | 107.2 | 9.4 | 104.3 | 115.1 | 80.9 | 119.4 |
-| C# · ASP.NET Core NativeAOT | 124.0 | **8.1** | 122.0 | 122.4 | 40.5 | 57.8 |
-| Kotlin · Ktor Netty JIT | 160.4 | 31.3 | 171.9 | 155.1 | 201.5 | 275.8 |
-| Kotlin · Ktor Netty Native Image | 166.7 | 31.0 | 166.4 | 154.5 | 61.8 | 114.8 |
-| Kotlin · Ktor CIO JIT | 163.3 | 31.7 | 171.0 | 155.2 | 206.0 | 266.4 |
-| Kotlin · Ktor CIO Native Image | 166.0 | 30.6 | 168.0 | 159.3 | 53.1 | 103.0 |
-| Rust · Axum | **178.0** | 22.9 | **180.7** | **160.4** | **8.2** | **11.5** |
-| Crystal · `HTTP::Server` | 163.1 | 25.3 | 161.2 | 68.1 | 9.6 | 15.0 |
+| Go · `net/http` | 152.6 | 39.0 | 152.5 | 140.2 | 16.6 | 27.6 |
+| C# · ASP.NET Core JIT | 115.7 | 8.8 | 118.4 | 109.6 | 80.9 | 118.8 |
+| C# · ASP.NET Core NativeAOT | 126.7 | **7.3** | 135.7 | 111.8 | 40.6 | 60.1 |
+| Kotlin · Ktor Netty JIT | 166.1 | 30.5 | 172.7 | 155.4 | 201.6 | 281.3 |
+| Kotlin · Ktor Netty Native Image | 169.2 | 30.2 | 169.2 | 161.4 | 67.4 | 119.4 |
+| Kotlin · Ktor CIO JIT | 166.8 | 30.6 | 173.6 | 157.6 | 208.6 | 267.7 |
+| Kotlin · Ktor CIO Native Image | 167.8 | 30.0 | 169.3 | 161.5 | 57.7 | 108.0 |
+| Rust · Axum | **182.2** | 22.3 | **180.2** | **164.8** | **9.0** | **12.3** |
+| Crystal · `HTTP::Server` | 163.8 | 25.2 | 163.5 | 69.4 | 10.2 | 15.7 |
 
 ### MySQL 8.4.13
 
@@ -34,17 +34,17 @@ MySQL runs in a separate process. The original Ktor server is not a port and was
 
 | Stack and build | History update, ops/s ↑ | Update p95, ms ↓ | History replay, ops/s ↑ | Favourites exchanges/s ↑ | App idle RSS, MiB ↓ | App peak RSS, MiB ↓ | DB peak RSS, MiB ↓ |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Go · `net/http` | 104.4 | 47.0 | 103.3 | 85.4 | 14.8 | 25.4 | 472.3 |
-| C# · ASP.NET Core JIT | 173.9 | 30.6 | 177.4 | 165.4 | 101.5 | 140.8 | 475.2 |
-| C# · ASP.NET Core NativeAOT | 223.2 | 23.5 | 215.0 | 207.1 | 51.6 | 93.1 | 477.1 |
-| Kotlin · Ktor Netty JIT | 192.3 | 30.0 | 224.9 | 175.3 | 224.7 | 434.3 | 470.4 |
-| Kotlin · Ktor Netty Native Image | 218.2 | 26.1 | 222.7 | 156.8 | 66.1 | 119.7 | 470.3 |
-| Kotlin · Ktor CIO JIT | 193.4 | 26.5 | 222.6 | 168.9 | 184.8 | 276.7 | 470.3 |
-| Kotlin · Ktor CIO Native Image | 215.0 | 25.1 | **237.4** | 179.8 | 57.4 | 107.4 | 470.2 |
-| Rust · Axum | **226.6** | **22.2** | 235.5 | **223.7** | **8.1** | **11.7** | 484.8 |
-| Crystal · `HTTP::Server` | 120.1 | 40.2 | 119.3 | 58.8 | 14.0 | 21.1 | 475.1 |
+| Go · `net/http` | 121.6 | 40.6 | 118.3 | 108.3 | 15.1 | 24.2 | 473.1 |
+| C# · ASP.NET Core JIT | 211.7 | 24.9 | 224.0 | 164.9 | 102.2 | 143.9 | 477.1 |
+| C# · ASP.NET Core NativeAOT | 197.6 | 25.6 | 233.6 | 217.0 | 51.4 | 88.7 | 475.2 |
+| Kotlin · Ktor Netty JIT | 190.0 | 25.9 | 231.4 | 175.0 | 225.1 | 435.6 | 472.2 |
+| Kotlin · Ktor Netty Native Image | 220.9 | 26.2 | 234.1 | 182.7 | 72.0 | 124.1 | 470.4 |
+| Kotlin · Ktor CIO JIT | 194.1 | 30.1 | 229.6 | 185.7 | 203.1 | 277.4 | 470.4 |
+| Kotlin · Ktor CIO Native Image | 215.8 | 25.7 | 222.3 | 180.2 | 62.3 | 112.5 | 470.2 |
+| Rust · Axum | **231.3** | **21.6** | **235.6** | **229.5** | **8.5** | **12.6** | 484.6 |
+| Crystal · `HTTP::Server` | 168.0 | 35.1 | 177.0 | 63.5 | 14.6 | 21.7 | 476.6 |
 
-[Raw results](bench/results/) · [Methodology](bench/README.md#memory-of-an-already-authenticated-sync) · [Kotlin 2.4.21 / Ktor 3.6.1 trials](bench/results/kotlin-stack-ab-memory-four.jsonl)
+[All 54 trials](bench/results/current-stacks-memory-four.jsonl) · [Dependency versions and reproduction](bench/README.md#current-port-comparison)
 
 ## Same Go backend, different databases
 

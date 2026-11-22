@@ -80,6 +80,25 @@ To add results for just Rust and Crystal, pass `--apps axum crystal` to each `ma
 
 SQLite uses WAL with FULL synchronous commits; the runner checks MySQL `innodb_flush_log_at_trx_commit=1` and `sync_binlog=1`. The comparison is between entire implementations (runtime, HTTP, serialization, SQL, drivers, connection pools), not an isolated measurement of the languages or ORMs.
 
+## Current port comparison
+
+The [four-client trials](results/current-stacks-memory-four.jsonl) behind the [README tables](../README.md#how-the-stacks-compare) use the refreshed port dependencies at `92ca90d9e9`. Go uses `modernc.org/sqlite` 1.63.0 and MySQL driver 1.10.2; C# uses Microsoft.Data.Sqlite 11.0.0 and MySqlConnector 3.0.0; Kotlin 2.4.21 / Ktor 3.6.1 uses SQLite JDBC 3.54.1.0 and MySQL Connector/J 26.10.0; Axum uses SQLx 0.9.1 with bundled SQLite 3.54.1. Crystal 1.22.3 uses its system SQLite 3.53.4 and the pinned shards.
+
+Build Kotlin on JDK 21 and run both Kotlin JIT variants on the same Oracle GraalVM 25.0.5 used for Native Image. MySQL is 8.4.13; keep the same image digest and CPU placement for comparisons.
+
+```sh
+export GRAALVM_HOME="$(mise where java@oracle-graalvm-25.0.5)"
+JAVA_HOME="$(mise where java@21)" ./bench/build.sh \
+  tools go csharp csharp-aot kotlin-aot kotlin-cio-aot axum crystal
+JAVA_HOME="$GRAALVM_HOME" RATE_LIMIT_API_PER_SECOND=1000 ./bench/matrix.py memory \
+  --apps go csharp csharp-aot kotlin kotlin-aot kotlin-cio kotlin-cio-aot axum crystal \
+  --clients 4 --library 50 --rounds 50 --warmup 10 --trials 3 \
+  --app-cpus 0-3 --mysql-cpus 4-5 --client-cpus 6-7 \
+  --output build/bench/current-stacks-memory-four.jsonl
+```
+
+The fresh snapshot measures complete builds, not a dependency-only A/B against the archival results below. It keeps the shared API limiter enabled at 1,000 requests/s; registration and password hashing run before the measured restart.
+
 ## Measurement environment
 
 Linux x86-64, Ryzen 7 7800X3D, 30 GiB RAM, NVMe/Btrfs. The server process ran on CPUs 0–3, MySQL on 4–5, the HTTP load generator on 6–7 (distinct physical cores). MySQL 8.4.13 ran in rootless Podman via a loopback TCP port; SQLite ran in-process. The database cost is **additional** to the application cost for MySQL. The load generator includes client-side encoding/decoding and verification of the favourites GET in exchange latency.
