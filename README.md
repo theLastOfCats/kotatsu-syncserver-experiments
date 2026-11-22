@@ -25,7 +25,7 @@ Historical runs of the same authenticated sync workload: four clients, 50 histor
 | Original Ktor Netty · GraalVM 25 JIT | MariaDB | 33.3 | 137.2 | 35.0 | 27.3 | 215.4 | 479.4 | 153.9 |
 | Original Ktor Netty · GraalVM 25 Native Image | MariaDB | 29.5 | 151.8 | 30.0 | 23.6 | 87.0 | 132.5 | 153.6 |
 
-One favourites exchange is a GET plus a POST. RSS is sampled per process, not whole-system memory. The ports use MySQL 8.4.13; the original uses MariaDB 11.8.9 with different durability settings. Compare complete stacks, not languages in isolation. These builds predate the unified API limits.
+One favourites exchange is a GET plus a POST. RSS is sampled per process, not whole-system memory. The rows come from separate benchmark runs: the Kotlin port rows use Kotlin 2.4.21 / Ktor 3.6.1 from the upgrade A/B, and the other ports use earlier builds. **Original Ktor** is the reference server, not the Kotlin port. It uses MariaDB 11.8.9; the ports use MySQL 8.4.13 with different durability settings. Compare complete stacks, not languages in isolation. All builds shown predate the unified API limits.
 
 [Raw results (including SQLite)](bench/results/) · [Methodology](bench/README.md#memory-of-an-already-authenticated-sync) · [Kotlin 2.4.21 / Ktor 3.6.1 trials](bench/results/kotlin-stack-ab-memory-four.jsonl)
 
