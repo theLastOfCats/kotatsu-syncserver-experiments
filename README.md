@@ -20,6 +20,8 @@ export DATABASE_DIALECT=sqlite DATABASE_PATH="$PWD/build/demo.sqlite"
 
 In another terminal, `curl http://127.0.0.1:8080/` should return `Alive`. See [build and runtime instructions](bench/README.md#build-and-run) for the other ports, Kotlin’s Netty/CIO builds, NativeAOT and MySQL. Use a disposable database and keep the JWT secret stable across restarts if sessions should survive.
 
+All five ports create Argon2id password hashes with the same cost profile. Use a fresh database for comparisons: the old C# PBKDF2 and Crystal bcrypt hashes are not accepted; existing accounts on those builds need a password reset. See [benchmark methodology](bench/README.md#common-argon2id-password-profile).
+
 ## Tests and results
 
 - [HTTP contract](contract-tests/README.md): what the Android-facing scenarios cover and how to run them.

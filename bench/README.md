@@ -6,6 +6,8 @@
 
 Install the tools for the targets you want: Go 1.26+ (also needed for test clients), .NET SDK 11, JDK 21, stable Rust/Cargo, or Crystal/Shards via `mise install crystal@latest`. Run from the repository root:
 
+Crystal links against the system `libargon2` for password hashing. On Debian/Ubuntu, install `libargon2-dev` to build; the executable needs `libargon2-1` at runtime.
+
 ```sh
 ./bench/build.sh                     # or pass individual targets: tools go csharp kotlin axum crystal
 export PORT=8080 BASE_URL=http://127.0.0.1:8080
@@ -67,11 +69,11 @@ Go 1.27.4 (`modernc.org/sqlite`); .NET 11 Release, JIT, not NativeAOT (`Microsof
 
 Three implementation differences limit what the numbers establish:
 
-* **Memory:** Go and Kotlin use Argon2id with 64 MiB of working memory per hash; C# uses PBKDF2-SHA256. Peak RSS includes account creation. It describes the whole invocation, not the memory required for an already authenticated sync.
+* **Memory:** In the historical measurements below, Go and Kotlin used Argon2id with 64 MiB per hash, while C# used PBKDF2-SHA256. The `load` profile's peak RSS includes account creation; the post-restart `memory` profile does not.
 * **SQLite contention:** Go and Kotlin serialize database work on one connection (10 s busy timeout); C# uses the driver's pooled connections (30 s busy timeout). These are different queueing policies under concurrent writes.
 * **MySQL transport and pools:** Go does not request TLS and allows up to 32 connections. Kotlin prefers TLS and allows 16; C# prefers TLS and uses MySqlConnector's default pool limit. Actual negotiated ciphers and pool occupancy were not recorded. These data cannot isolate the cost of a runtime, a driver or TLS.
 
-The two additional native releases use Rust 1.100.0 with Axum 0.8.9 and SQLx 0.8.6, and Crystal 1.22.3 with `HTTP::Server`, crystal-db 0.15.0, crystal-sqlite3 0.24.0 and crystal-mysql 0.18.0. Both serialize SQLite access on one connection. MySQL pool limits are 16 for Axum and 8 for Crystal. Crystal extends the pinned driver's handshake for `caching_sha2_password`: it requires TLS on TCP, permits the benchmark's self-signed certificate only on loopback, and verifies server identity for remote hosts. MySQL readiness probes use a separate admin account so the application's first connection exercises cold authentication. Axum hashes passwords with Argon2id, Crystal with bcrypt; the restarted memory profile excludes both.
+The two additional native releases use Rust 1.100.0 with Axum 0.8.9 and SQLx 0.8.6, and Crystal 1.22.3 with `HTTP::Server`, crystal-db 0.15.0, crystal-sqlite3 0.24.0 and crystal-mysql 0.18.0. Both serialize SQLite access on one connection. MySQL pool limits are 16 for Axum and 8 for Crystal. Crystal extends the pinned driver's handshake for `caching_sha2_password`: it requires TLS on TCP, permits the benchmark's self-signed certificate only on loopback, and verifies server identity for remote hosts. MySQL readiness probes use a separate admin account so the application's first connection exercises cold authentication. In those measurements Axum used Argon2id with its library defaults and Crystal used bcrypt; the restarted memory profile excludes both.
 
 ## Original Go, C# and Kotlin measurements
 
@@ -448,3 +450,51 @@ History throughput was close on all three. MariaDB led the favourites median; Po
 | PostgreSQL 19.0 | 25.7 | 27.2 | 33.9 | 104.0 |
 
 PostgreSQL remained lowest in this small working set even including page cache and other cgroup charges. A configured 128 MiB cache is not necessarily fully resident. These measurements do not establish the memory needed for a larger catalogue or production concurrency.
+
+## Kotlin 2.4.21 / Ktor 3.6.1 upgrade
+
+Compare the published Kotlin 2.2.20 / Ktor 3.3.0 build (`b040cde59c`) with the upgraded port. Keep a checkout of that commit for the control. Build Netty and CIO from both trees with the same JDK 21 and GraalVM 25.0.5; the AOT build targets also produce the JIT distributions.
+
+The resolved Netty version moves from 4.2.4.Final to 4.2.17.Final, kotlinx-coroutines from 1.10.2 to 1.11.0 and kotlinx-serialization from 1.9.0 to 1.11.0. The SQLite and MySQL driver versions do not change. The result measures the whole stack upgrade, not a Kotlin compiler effect in isolation.
+
+[HTTP verification](results/kotlin-stack-ab-verified.jsonl) passed on all 16 combinations: both versions, both engines, JIT and Native Image, SQLite and MySQL. Netty Native Image remains experimental; [Ktor documents CIO as the supported engine](https://ktor.io/docs/graalvm.html).
+
+```bash
+# Run from each checkout with JDK21_HOME and GRAALVM_HOME set.
+JAVA_HOME="$JDK21_HOME" ./bench/build.sh tools kotlin-aot kotlin-cio-aot
+
+# From the upgraded checkout only:
+export JAVA_HOME="$GRAALVM_HOME"
+control=/absolute/path/to/control-checkout
+cpus=(--app-cpus 0-3 --mysql-cpus 4-5 --client-cpus 6-7)
+python3 bench/kotlin-stack-ab.py "$control" verify "${cpus[@]}" \
+  --output build/bench/kotlin-stack-verify.jsonl
+python3 bench/kotlin-stack-ab.py "$control" memory "${cpus[@]}" \
+  --clients 4 --library 50 --warmup 10 --rounds 50 --trials 3 \
+  --output build/bench/kotlin-stack-memory-four.jsonl
+```
+
+The rate limit configuration, storage, and workload stay the same. This profile records throughput and p95 during authenticated sync after app restart. It excludes the neighbouring import and account creation; the separate MySQL process remains warm. Do not compare these figures directly to earlier load-only profiles. `old-` identifies the control; each JSONL record identifies the actual executable or JIT classpath by SHA-256.
+
+Medians of three trials per cell, control → upgrade. See [all 48 trials](results/kotlin-stack-ab-memory-four.jsonl).
+
+| Engine / build | DB | Changed history, ops/s | Replay, ops/s | Favourites, exchanges/s | Changed history p95, ms | App peak RSS, MiB |
+|---|---|---:|---:|---:|---:|---:|
+| Netty JIT | SQLite | 163.1 → 160.4 | 168.9 → 171.9 | 153.3 → 155.1 | 30.4 → 31.3 | 278.6 → 275.8 |
+| Netty JIT | MySQL | 178.1 → 192.3 | 221.9 → 224.9 | 175.8 → 175.3 | 30.6 → 30.0 | 433.9 → 434.3 |
+| CIO JIT | SQLite | 162.2 → 163.3 | 170.2 → 171.0 | 154.8 → 155.2 | 31.9 → 31.7 | 271.2 → 266.4 |
+| CIO JIT | MySQL | 188.5 → 193.4 | 218.0 → 222.6 | 171.1 → 168.9 | 30.0 → 26.5 | 417.8 → 276.7 |
+| Netty AOT | SQLite | 166.0 → 166.7 | 166.5 → 166.4 | 157.4 → 154.5 | 31.6 → 31.0 | 112.4 → 114.8 |
+| Netty AOT | MySQL | 221.6 → 218.2 | 224.7 → 222.7 | 176.7 → 156.8 | 27.3 → 26.1 | 117.0 → 119.7 |
+| CIO AOT | SQLite | 168.9 → 166.0 | 168.2 → 168.0 | 158.5 → 159.3 | 29.8 → 30.6 | 101.4 → 103.0 |
+| CIO AOT | MySQL | 216.5 → 215.0 | 217.6 → 237.4 | 151.9 → 179.8 | 25.3 → 25.1 | 105.2 → 107.4 |
+
+On SQLite, throughput stayed within 2%. On MySQL, upgraded Netty JIT improved changed-history throughput in all three trials (median +8%), and CIO AOT improved replay in all three (+9%). The MySQL favourites medians moved in opposite directions for the two native images; the trial ranges overlap, so +18% for CIO and −11% for Netty are not general performance claims. MySQL CIO JIT RSS moved from 274–421 MiB across the control trials to 277–281 MiB across the upgrade trials; its median fell, but the lowest control trial was already in the same range.
+
+## Common Argon2id password profile
+
+New passwords in all five ports use the original server's Argon2id v19 profile: 65,536 KiB of working memory per hash (total, not per lane), three passes, four lanes, a random 16-byte salt and a 32-byte digest. This matches the memory-constrained recommendation in [RFC 9106 §7.4](https://www.rfc-editor.org/rfc/rfc9106.html#section-7.4). The standard PHC encoding aligns the hash parameters, not implementation, threading or scheduling costs. Reset tokens still use their existing token hash.
+
+Use fresh databases when comparing registrations or logins. Older C# PBKDF2 and Crystal bcrypt hashes require a password reset; Axum can still verify its existing Argon2id hashes at their stored costs. Historical results use the password schemes recorded for those snapshots. The post-restart sync profile continues to exclude password hashing regardless of scheme.
+
+The [changed builds passed the live HTTP contract](results/argon2id-verified.jsonl) on SQLite and MySQL, including SMTP recovery and C# NativeAOT. A separate live SQLite check covered nine build variants: inspect the PHC from signup, verify it against libargon2 with a UTF-8 password, then check that each variant accepts a hash produced by Go and rejects a wrong password.
