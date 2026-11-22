@@ -46,6 +46,28 @@ MySQL runs in a separate process. The original Ktor server is not a port and was
 
 [All 54 trials](bench/results/current-stacks-memory-four.jsonl) · [Dependency versions and reproduction](bench/README.md#current-port-comparison)
 
+## Deployment size and startup
+
+Linux x86-64 release outputs. Payload means the full as-built application, including sidecars and assets for other platforms, before compression and without debug symbol files. A JIT entrypoint is a launcher, not a self-contained app. Startup figures are medians of seven runs per cell, from process spawn to `200 Alive` on SQLite.
+
+| Stack and build | Entrypoint | App payload, MiB ↓ | New DB · 1 core, ms ↓ | Restart · 1 core, ms ↓ | New DB · 4 cores, ms ↓ | Restart · 4 cores, ms ↓ | Restart RSS · 1 core, MiB ↓ |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Go · `net/http` | 20.2 MiB | 20.2 | 79.0 | 3.9 | 79.8 | 3.9 | 14.6 |
+| C# · ASP.NET Core JIT | 31.4 KiB | 54.9 | 252.1 | 170.0 | 235.2 | 156.3 | 78.5 |
+| C# · ASP.NET Core NativeAOT | 21.7 MiB | 23.1 | 98.0 | 21.0 | 101.1 | 24.2 | 42.3 |
+| Kotlin · Ktor Netty JIT | 12.4 KiB | 53.3 | 1,333.9 | 1,288.9 | 609.8 | 555.1 | 267.0 |
+| Kotlin · Ktor Netty Native Image | 85.6 MiB | 85.6 | 70.1 | 28.5 | 74.3 | 28.6 | 67.2 |
+| Kotlin · Ktor CIO JIT | 11.0 KiB | 37.4 | 1,060.8 | 1,017.3 | 486.0 | 442.4 | 240.1 |
+| Kotlin · Ktor CIO Native Image | 77.6 MiB | 77.6 | **65.6** | 24.4 | **66.4** | 24.5 | 57.6 |
+| Rust · Axum | 13.6 MiB | 13.6 | 81.4 | **2.8** | 79.3 | **2.7** | **9.0** |
+| Crystal · `HTTP::Server` | 5.0 MiB | **5.0** | 75.5 | 3.9 | 79.9 | 3.9 | 10.1 |
+
+The installed .NET 11 shared frameworks and hostfxr add **106.1 MiB** for C# JIT. The full GraalVM 25 installation used by Kotlin JIT adds **855.0 MiB**, including JDK tools; it is not a minimal JVM image. Neither is counted in app payload, and system libraries are excluded from all rows.
+
+On one core, an initialized SQLite database let Go, Axum and Crystal restart in about 3–4 ms. Creating the schema took much longer. Kotlin Native Image traded a larger payload for much faster startup than its JIT builds. Startup uses host page caches as-is and does not measure a cold machine boot or an external database.
+
+[1-core trials](bench/results/platform-startup-1core.jsonl) · [4-core trials](bench/results/platform-startup-4core.jsonl) · [Methodology](bench/README.md#deployment-and-cpu-scaling)
+
 ## Same Go backend, different databases
 
 Separate experiment: the same Go binary, four clients and three trials per engine. All three ran with a 128 MiB database cache setting and durable standalone commits. SQLite is in-process and was not part of this experiment.

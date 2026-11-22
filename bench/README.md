@@ -99,6 +99,28 @@ JAVA_HOME="$GRAALVM_HOME" RATE_LIMIT_API_PER_SECOND=1000 ./bench/matrix.py memor
 
 The fresh snapshot measures complete builds, not a dependency-only A/B against the archival results below. It keeps the shared API limiter enabled at 1,000 requests/s; registration and password hashing run before the measured restart.
 
+## Deployment and CPU scaling
+
+Run the startup and sync profiles sequentially on the builds above. On this Ryzen 7 7800X3D, CPUs 0–7 are on distinct physical cores; `0`, `0-1`, and `0-3` give the server one, two, and four cores. The driver stays on CPUs 6–7 and MySQL on CPUs 4–5. These are CPU affinity tests, not emulated VPS CPU quotas or clock speeds. SQLite shares the app's cores; the MySQL profile is not a one-core deployment with app and database sharing that core.
+
+```sh
+export JAVA_HOME="$(mise where java@oracle-graalvm-25.0.5)"
+python3 bench/startup.py --app-cpus 0 --client-cpus 6-7 \
+  --output build/bench/platform-startup-1core.jsonl
+python3 bench/startup.py --app-cpus 0-3 --client-cpus 6-7 \
+  --output build/bench/platform-startup-4core.jsonl
+RATE_LIMIT_API_PER_SECOND=1000 taskset -c 6-7 python3 bench/scaling.py \
+  --app-cpus 0 0-1 0-3 --mysql-cpus 4-5 --client-cpus 6-7 \
+  --library 200 --rounds 100 --warmup 25 --trials 3 \
+  --output build/bench/platform-scaling.jsonl
+```
+
+Startup is process spawn to the first observed `200 Alive`, with 1 ms sleeps between failed probes. Seven paired starts per build and CPU count use a new SQLite file, then the same initialized empty file. Every start uses a new process; filesystem caches are not flushed. The payload is the as-built binary or release directory, including companion files and other-platform assets, excluding `.pdb` and `.dbg`. External shared runtimes and OS libraries are not included. The GraalVM figure is the entire installed Java home, not a minimal runtime image.
+
+Scaling uses the post-restart JWT-only profile, with four clients, 200 history and 200 favourites entries per client, 25 warmup and 100 timed operations per client per phase. The three trials shuffle the build, database and core-count cells. Compare operation throughput within each build and database: speedup is throughput on N cores divided by throughput on one; divide by N for parallel efficiency. Report p99 as the median of per-trial nearest-rank p99 values, not a fleet-wide tail estimate.
+
+CPU is the user plus system time of each process from client resume through final readback, including warmup and any runtime work in that window. Normalized CPU in the summary divides that total by the number of successful timed operations, so it includes amortized warmup and readback. A favourites exchange is two HTTP requests. RSS peaks use 100 ms samples; approximately 1 s samples are kept separately as a time series. No registration, Argon2, or neighbouring import runs in the measured window.
+
 ## Measurement environment
 
 Linux x86-64, Ryzen 7 7800X3D, 30 GiB RAM, NVMe/Btrfs. The server process ran on CPUs 0–3, MySQL on 4–5, the HTTP load generator on 6–7 (distinct physical cores). MySQL 8.4.13 ran in rootless Podman via a loopback TCP port; SQLite ran in-process. The database cost is **additional** to the application cost for MySQL. The load generator includes client-side encoding/decoding and verification of the favourites GET in exchange latency.

@@ -122,20 +122,37 @@ def rss_kib(pids):
     return result
 
 
+def cpu_ticks(pids):
+    # comm is parenthesized and may contain spaces or parentheses; fields
+    # following its last ')' start with field 3 (state).
+    result = {}
+    for name, pid in pids.items():
+        fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+        result[name] = int(fields[11]) + int(fields[12])
+    return result
+
+
 class PeakRSS:
     """Sample Linux process RSS (KiB), not heap or cgroup memory."""
-    def __init__(self, pids):
+    def __init__(self, pids, series_start=None):
         self.peaks = {name: 0 for name in pids}
         self.pids = pids
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self.sample)
         self.error = None
+        self.series_start = series_start
+        self.series = []
 
     def sample(self):
         try:
             while True:
-                for name, value in rss_kib(self.pids).items():
+                values = rss_kib(self.pids)
+                for name, value in values.items():
                     self.peaks[name] = max(value, self.peaks[name])
+                if self.series_start is not None:
+                    elapsed = time.monotonic() - self.series_start
+                    if not self.series or elapsed - self.series[-1]['elapsed_ms'] / 1000 >= 1:
+                        self.series.append({'elapsed_ms': elapsed * 1000, 'rss_kib': values})
                 if self.stop.wait(0.1):
                     break
         except Exception as exc:
@@ -161,7 +178,7 @@ def load_command(args, base):
     return pinned(args.client_cpus, cmd)
 
 
-def measure_memory(args, target, work, env, database_pids):
+def measure_memory(args, target, work, env, database_pids, *, process_metrics=False):
     cmd = load_command(args, env['BASE_URL']) + ['--pause-after-seed']
     with ExitStack() as cleanup:
         with application(target, work, env, args.app_cpus):
@@ -174,15 +191,33 @@ def measure_memory(args, target, work, env, database_pids):
             pids = dict(database_pids, app=app.pid)
             time.sleep(3)
             idle = rss_kib(pids)
-            with PeakRSS(pids) as peak:
+            if process_metrics:
+                before_cpu = cpu_ticks(pids)
+                started = time.monotonic()
+            sampler = PeakRSS(pids, started if process_metrics else None)
+            with sampler as peak:
                 output, _ = client.communicate(input='\n', timeout=300)
                 if client.returncode:
                     raise RuntimeError(f'load client exited with status {client.returncode}')
+                if process_metrics:
+                    after_cpu = cpu_ticks(pids)
+                    duration_ms = (time.monotonic() - started) * 1000
             load = json.loads(output)
             time.sleep(10)
             after = rss_kib(pids)
-            return {'load': load, 'rss_kib': {'idle': idle, 'sync_sampled_peak': peak, 'after_sync': after},
-                    'idle_seconds': 3, 'after_sync_seconds': 10, 'sample_interval_ms': 100}
+            result = {'load': load, 'rss_kib': {'idle': idle, 'sync_sampled_peak': peak, 'after_sync': after},
+                      'idle_seconds': 3, 'after_sync_seconds': 10, 'sample_interval_ms': 100}
+            if process_metrics:
+                ticks_per_second = os.sysconf('SC_CLK_TCK')
+                result['process_metrics'] = {
+                    'interval': 'post-restart client resume through final output; includes warmup and readbacks, excludes registration',
+                    'duration_ms': duration_ms,
+                    'cpu_ms': {name: (after_cpu[name] - ticks) * 1000 / ticks_per_second
+                               for name, ticks in before_cpu.items()},
+                    'rss_sample_interval_ms': 1000,
+                    'rss_series': [sample for sample in sampler.series if sample['elapsed_ms'] <= duration_ms],
+                }
+            return result
 
 
 def run_cell(args, target, dialect, trial, work):
@@ -238,7 +273,7 @@ def run_cell(args, target, dialect, trial, work):
                        SMTP_USERNAME='', SMTP_PASSWORD='', SMTP_FROM='kotatsu@example.invalid')
             ready(lambda: http_ok(mail_url + '/api/v1/messages'), 'Mailpit')
         if args.mode == 'memory':
-            record.update(measure_memory(args, target, work, env, pids))
+            record.update(measure_memory(args, target, work, env, pids, process_metrics=args.process_metrics))
             return record
         if args.mode == 'verify':
             results = []
@@ -279,10 +314,14 @@ def main():
     parser.add_argument('--app-cpus')
     parser.add_argument('--mysql-cpus')
     parser.add_argument('--client-cpus')
+    parser.add_argument('--process-metrics', action='store_true',
+                        help='memory mode: record post-restart CPU and approximately 1-second RSS samples')
     parser.add_argument('--output', required=True, type=Path, help='new JSONL output, never overwritten')
     args = parser.parse_args()
     if args.trials < 1:
         parser.error('--trials must be positive')
+    if args.process_metrics and args.mode != 'memory':
+        parser.error('--process-metrics is only available in memory mode')
     if args.mode == 'memory' and args.neighbour_library:
         parser.error('memory mode excludes the neighbouring account registration')
     args.output.parent.mkdir(parents=True, exist_ok=True)

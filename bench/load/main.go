@@ -32,6 +32,7 @@ type statistics struct {
 	N          int     `json:"n"`
 	P50MS      float64 `json:"p50_ms"`
 	P95MS      float64 `json:"p95_ms"`
+	P99MS      float64 `json:"p99_ms"`
 	Throughput float64 `json:"throughput_ops_per_sec"`
 	DurationMS float64 `json:"duration_ms"`
 }
@@ -123,7 +124,7 @@ func summarize(samples []time.Duration, elapsed time.Duration) statistics {
 		return float64(samples[index]) / float64(time.Millisecond)
 	}
 	return statistics{
-		N: len(samples), P50MS: percentile(0.50), P95MS: percentile(0.95),
+		N: len(samples), P50MS: percentile(0.50), P95MS: percentile(0.95), P99MS: percentile(0.99),
 		Throughput: float64(len(samples)) / elapsed.Seconds(),
 		DurationMS: float64(elapsed) / float64(time.Millisecond),
 	}
