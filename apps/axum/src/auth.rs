@@ -1,7 +1,7 @@
 use crate::{config::MailConfig, html_escape, AppState};
 use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
+    Algorithm as Argon2Algorithm, Argon2, Params, Version,
 };
 use axum::{
     extract::{ConnectInfo, State},
@@ -170,7 +170,8 @@ async fn hash_password(state: &AppState, password: String) -> Result<String, Sta
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let salt = SaltString::generate(&mut OsRng);
-        Argon2::default()
+        let params = Params::new(65536, 3, 4, Some(32)).map_err(|e| e.to_string())?;
+        Argon2::new(Argon2Algorithm::Argon2id, Version::V0x13, params)
             .hash_password(password.as_bytes(), &salt)
             .map(|hash| hash.to_string())
             .map_err(|e| e.to_string())

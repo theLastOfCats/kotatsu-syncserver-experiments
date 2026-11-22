@@ -6,13 +6,17 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using Konscious.Security.Cryptography;
 using MailKit.Security;
 using Microsoft.AspNetCore.Http.Features;
 using MimeKit;
 
 public static class Auth
 {
-    private const int PasswordIterations = 600_000;
+    private const int PasswordMemoryKiB = 65_536;
+    private const int PasswordIterations = 3;
+    private const int PasswordParallelism = 4;
+    private const string PasswordPrefix = "$argon2id$v=19$m=65536,t=3,p=4$";
     private const string JwtHeader = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
     private static readonly AuthJsonContext RequestJson = new(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
@@ -239,7 +243,9 @@ public static class Auth
                 Parameter(command, "@password", hash);
                 command.ExecuteNonQuery();
                 account = FindAccount(connection, body.Email);
-                if (account is not null && account.SessionVersion == 0 && account.PasswordHash == hash)
+                if (account is not null && account.SessionVersion == 0
+                    && CryptographicOperations.FixedTimeEquals(
+                        Encoding.UTF8.GetBytes(account.PasswordHash), Encoding.UTF8.GetBytes(hash)))
                     return Results.Json(new TokenResponse(CreateToken(account.Id, account.SessionVersion)), ResponseJson.TokenResponse);
             }
             catch (DbException exception) when (exception is Microsoft.Data.Sqlite.SqliteException { SqliteExtendedErrorCode: 2067 }
@@ -470,31 +476,47 @@ public static class Auth
         }
     }
 
+    private static byte[] DerivePassword(string password, byte[] salt)
+    {
+        using var argon = new Argon2id(Encoding.UTF8.GetBytes(password))
+        {
+            Salt = salt,
+            MemorySize = PasswordMemoryKiB,
+            Iterations = PasswordIterations,
+            DegreeOfParallelism = PasswordParallelism
+        };
+        return argon.GetBytes(32);
+    }
+
     private static string HashPassword(string password)
     {
         var salt = RandomNumberGenerator.GetBytes(16);
-        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, PasswordIterations, HashAlgorithmName.SHA256, 32);
-        return $"pbkdf2-sha256${PasswordIterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+        var hash = DerivePassword(password, salt);
+        return PasswordPrefix + Convert.ToBase64String(salt).TrimEnd('=') + "$"
+            + Convert.ToBase64String(hash).TrimEnd('=');
     }
 
     private static bool VerifyPassword(string password, string stored)
     {
-        var parts = stored.Split('$');
-        if (parts.Length != 4 || parts[0] != "pbkdf2-sha256"
-            || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var iterations)
-            || iterations is < 100_000 or > 2_000_000) return false;
-        try
-        {
-            var salt = Convert.FromBase64String(parts[2]);
-            var expected = Convert.FromBase64String(parts[3]);
-            if (salt.Length != 16 || expected.Length != 32) return false;
-            var actual = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, expected.Length);
-            return CryptographicOperations.FixedTimeEquals(actual, expected);
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
+        if (!stored.StartsWith(PasswordPrefix, StringComparison.Ordinal)) return false;
+        var parts = stored[PasswordPrefix.Length..].Split('$');
+        if (parts.Length != 2 || !TryDecodePasswordField(parts[0], 16, out var salt)
+            || !TryDecodePasswordField(parts[1], 32, out var expected)) return false;
+        var actual = DerivePassword(password, salt);
+        return CryptographicOperations.FixedTimeEquals(actual, expected);
+    }
+
+    private static bool TryDecodePasswordField(string value, int length, out byte[] decoded)
+    {
+        decoded = Array.Empty<byte>();
+        if (value.Length != (length * 8 + 5) / 6) return false;
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        foreach (var ch in value)
+            if (alphabet.IndexOf(ch) < 0) return false;
+        // Unused bits in the final character must be zero for canonical unpadded base64.
+        if ((alphabet.IndexOf(value[^1]) & (length == 16 ? 15 : 3)) != 0) return false;
+        decoded = Convert.FromBase64String(value.PadRight((value.Length + 3) / 4 * 4, '='));
+        return decoded.Length == length;
     }
 
     private static string TokenHash(string token) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));

@@ -49,6 +49,6 @@ Only authentication and recovery are rate limited; sync and catalog requests hav
 
 For local Mailpit without credentials, set `MAIL_PROVIDER=smtp`, `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025` and `SMTP_FROM=kotatsu@example.invalid`. The console sender and Mailpit are development facilities; production recovery links should use HTTPS and a trusted SMTP service with TLS.
 
-Passwords use salted PBKDF2-SHA256, and reset tokens are random, stored only as hashes, expire after 15 minutes and are single-use. A successful reset invalidates existing JWT sessions. SQLite uses WAL and full synchronous commits; back up an active database with SQLite's online backup API rather than copying only the main file. Protect the database, JWT secret and backups as credentials.
+Passwords use Argon2id v19 (64 MiB, 3 iterations, 4 lanes) with a random 16-byte salt and a 32-byte hash, stored in unpadded PHC format. Historical PBKDF2 password hashes are not supported by this experiment; existing accounts need a password reset. Reset tokens are random, stored only as hashes, expire after 15 minutes and are single-use. A successful reset invalidates existing JWT sessions. SQLite uses WAL and full synchronous commits; back up an active database with SQLite's online backup API rather than copying only the main file. Protect the database, JWT secret and backups as credentials.
 
 For contract and restore-drill commands, see `contract-tests/README.md` in the repository root. Use disposable storage and a disposable local mailbox for those scenarios.

@@ -1,12 +1,42 @@
 require "json"
 require "base64"
 require "digest/sha256"
-require "crypto/bcrypt/password"
 require "crypto/subtle"
 require "random/secure"
 require "openssl/hmac"
 require "openssl"
 require "socket"
+
+@[Link("argon2")]
+lib LibArgon2
+  fun argon2id_hash_encoded(t_cost : UInt32, m_cost : UInt32, parallelism : UInt32,
+                            password : UInt8*, password_len : LibC::SizeT,
+                            salt : UInt8*, salt_len : LibC::SizeT, hash_len : LibC::SizeT,
+                            encoded : UInt8*, encoded_len : LibC::SizeT) : Int32
+  fun argon2id_verify(encoded : UInt8*, password : UInt8*, password_len : LibC::SizeT) : Int32
+end
+
+module PasswordHash
+  extend self
+
+  # Restrict verification to the one supported PHC profile before invoking libargon2.
+  FORMAT = /\A\$argon2id\$v=19\$m=65536,t=3,p=4\$[A-Za-z0-9+\/]{22}\$[A-Za-z0-9+\/]{43}\z/
+
+  def create(password : String) : String
+    salt = Bytes.new(16)
+    Random::Secure.random_bytes(salt)
+    encoded = Bytes.new(128, 0_u8)
+    result = LibArgon2.argon2id_hash_encoded(3, 65536, 4, password.to_unsafe, password.bytesize,
+      salt.to_unsafe, salt.size, 32, encoded.to_unsafe, encoded.size)
+    raise "Argon2 password hashing failed (#{result})" unless result == 0
+    String.new(encoded.to_unsafe)
+  end
+
+  def verify(encoded : String, password : String) : Bool
+    return false unless FORMAT.matches?(encoded)
+    LibArgon2.argon2id_verify(encoded.to_unsafe, password.to_unsafe, password.bytesize) == 0
+  end
+end
 
 module Auth
   extend self
@@ -116,13 +146,15 @@ module Auth
     end
     sql = "SELECT id, password_hash, token_version FROM app_users WHERE email = ?"
     user = app.db.query_one?(sql, email, as: {Int64, String, Int64})
+    generated_hash = nil
     if user.nil? && app.allow_register
-      password_hash = Crypto::Bcrypt::Password.create(password).to_s
+      generated_hash = PasswordHash.create(password)
       insert = app.dialect == "sqlite" ? "INSERT OR IGNORE" : "INSERT IGNORE"
-      app.db.exec "#{insert} INTO app_users (email, password_hash) VALUES (?, ?)", email, password_hash
+      app.db.exec "#{insert} INTO app_users (email, password_hash) VALUES (?, ?)", email, generated_hash
       user = app.db.query_one?(sql, email, as: {Int64, String, Int64})
     end
-    unless user && Crypto::Bcrypt::Password.new(user[1]).verify(password)
+    # Skip a second derivation only if the account still has the hash just created.
+    unless user && (user[1] == generated_hash || PasswordHash.verify(user[1], password))
       text(context, 400, "Wrong password")
       return
     end
@@ -166,7 +198,7 @@ module Auth
       text(context, 400, "Password should be from 2 to 24 characters long")
       return
     end
-    hash = Crypto::Bcrypt::Password.create(password).to_s
+    hash = PasswordHash.create(password)
     updated = app.db.exec("UPDATE app_users SET password_hash = ?, reset_hash = NULL, reset_expires = NULL, token_version = token_version + 1 WHERE id = ? AND reset_hash = ? AND reset_expires >= ?", hash, id, digest, Time.utc.to_unix)
     if updated.rows_affected == 0
       text(context, 400, "Invalid or expired token")
