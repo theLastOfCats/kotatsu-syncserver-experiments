@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{de::DeserializeOwned, Serialize};
-use sqlx::{Any, AnyPool, QueryBuilder, Row, Transaction};
+use sqlx::{Any, AnyPool, AssertSqlSafe, QueryBuilder, Row, Transaction};
 
 use super::model::{
     Category, Favourite, FavouriteData, FavouritesPackage, History, HistoryData, HistoryPackage,
@@ -52,8 +52,8 @@ pub async fn migrate(pool: &AnyPool, dialect: &str) -> Result<(), sqlx::Error> {
         format!("CREATE TABLE IF NOT EXISTS sync_categories (user_id BIGINT NOT NULL, category_id BIGINT NOT NULL, doc {text} NOT NULL, PRIMARY KEY (user_id, category_id), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"),
         format!("CREATE TABLE IF NOT EXISTS sync_favourites (user_id BIGINT NOT NULL, manga_id BIGINT NOT NULL, category_id BIGINT NOT NULL, doc {text} NOT NULL, PRIMARY KEY (user_id, manga_id, category_id), FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"),
     ];
-    for statement in &statements {
-        sqlx::query(statement).execute(pool).await?;
+    for statement in statements {
+        sqlx::query(AssertSqlSafe(statement)).execute(pool).await?;
     }
     Ok(())
 }

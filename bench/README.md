@@ -4,11 +4,11 @@
 
 ## Build and run
 
-Install the tools for the targets you want: Go 1.26+ (also needed for test clients), .NET SDK 11, JDK 21, stable Rust/Cargo, or Crystal/Shards via `mise install crystal@latest`. Run from the repository root:
+Install the tools for the targets you want: Go 1.26+ (also needed for test clients), .NET SDK 11, JDK 21, Rust/Cargo 1.94+, or Crystal/Shards via `mise install crystal@latest`. Run from the repository root:
 
 Crystal links against the system `libargon2` for password hashing. On Debian/Ubuntu, install `libargon2-dev` to build; the executable needs `libargon2-1` at runtime.
 
-Axum uses `jsonwebtoken` 10.3 or newer with the RustCrypto provider for HS256; older releases are affected by [CVE-2026-25537](https://github.com/advisories/GHSA-h395-gr6q-cpjc).
+Axum uses `jsonwebtoken` 12 with AWS-LC for HS256, which requires a C toolchain and CMake to build. Versions before 10.3.0 are affected by [CVE-2026-25537](https://github.com/advisories/GHSA-h395-gr6q-cpjc).
 
 ```sh
 ./bench/build.sh                     # or pass individual targets: tools go csharp kotlin axum crystal

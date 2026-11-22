@@ -1,6 +1,6 @@
 use crate::{config::MailConfig, html_escape, AppState};
 use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier},
     Algorithm as Argon2Algorithm, Argon2, Params, Version,
 };
 use axum::{
@@ -20,7 +20,7 @@ use lettre::{
     },
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::SysRng, TryRng};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -183,10 +183,9 @@ async fn hash_password(state: &AppState, password: String) -> Result<String, Api
     let permit = state.hash_slots.clone().try_acquire_owned().map_err(|_| ApiError::PasswordBusy)?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let salt = SaltString::generate(&mut OsRng);
         let params = Params::new(65536, 3, 4, Some(32)).map_err(|e| e.to_string())?;
         Argon2::new(Argon2Algorithm::Argon2id, Version::V0x13, params)
-            .hash_password(password.as_bytes(), &salt)
+            .hash_password(password.as_bytes())
             .map(|hash| hash.to_string())
             .map_err(|e| e.to_string())
     })
@@ -282,7 +281,8 @@ async fn login(
     let token = encode(
         &Header::new(Algorithm::HS256),
         &claims,
-        &EncodingKey::from_secret(state.config.jwt_secret.as_bytes()),
+        &EncodingKey::from_secret(state.config.jwt_secret.as_bytes())
+            .map_err(|e| failure("signing token", e))?,
     )
     .map_err(|e| failure("signing token", e))?;
     Ok(Json(json!({ "token": token })).into_response())
@@ -306,7 +306,8 @@ pub async fn current_user(headers: &HeaderMap, state: &AppState) -> Result<i64, 
     validation.set_required_spec_claims(&["exp", "iss", "aud"]);
     let claims = decode::<Claims>(
         token,
-        &DecodingKey::from_secret(state.config.jwt_secret.as_bytes()),
+        &DecodingKey::from_secret(state.config.jwt_secret.as_bytes())
+            .map_err(|_| StatusCode::UNAUTHORIZED)?,
         &validation,
     )
     .map_err(|_| StatusCode::UNAUTHORIZED)?
@@ -345,7 +346,9 @@ async fn forgot_password(
     Json(request): Json<ForgotRequest>,
 ) -> ApiResult {
     let mut bytes = [0_u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    SysRng
+        .try_fill_bytes(&mut bytes)
+        .map_err(|e| failure("generating password reset token", e))?;
     let token = URL_SAFE_NO_PAD.encode(bytes);
     let digest = hex::encode(Sha256::digest(token.as_bytes()));
     let now = now();
