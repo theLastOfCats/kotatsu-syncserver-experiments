@@ -6,6 +6,43 @@ This project asks two questions: **How much faster or lighter can the sync serve
 
 These are research and benchmarking implementations, **not official Kotatsu releases or production deployment recommendations**. Measurements compare implementations and configurations, not languages in isolation. JIT and AOT builds are reported separately.
 
+## How the stacks compare
+
+Historical runs of the same authenticated sync workload: four clients, 50 history and 50 favourite entries per account, medians of three trials. All columns come from the post-restart profile: the clients reuse their JWTs, with no registration, password hashing, or neighbouring import.
+
+| Stack and build | Database | History update, ops/s ↑ | Update p95, ms ↓ | History replay, ops/s ↑ | Favourites exchanges/s ↑ | App idle RSS, MiB ↓ | App peak RSS, MiB ↓ | DB peak RSS, MiB ↓ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Go · `net/http` | MySQL | 104.4 | 47.0 | 103.3 | 85.4 | 14.8 | 25.4 | 472.3 |
+| C# · ASP.NET Core JIT | MySQL | 173.9 | 30.6 | 177.4 | 165.4 | 101.5 | 140.8 | 475.2 |
+| C# · ASP.NET Core NativeAOT | MySQL | 223.2 | 23.5 | 215.0 | 207.1 | 51.6 | 93.1 | 477.1 |
+| Kotlin · Ktor Netty JIT | MySQL | 192.3 | 30.0 | 224.9 | 175.3 | 224.7 | 434.3 | 470.4 |
+| Kotlin · Ktor Netty Native Image | MySQL | 218.2 | 26.1 | 222.7 | 156.8 | 66.1 | 119.7 | 470.3 |
+| Kotlin · Ktor CIO JIT | MySQL | 193.4 | 26.5 | 222.6 | 168.9 | 184.8 | 276.7 | 470.3 |
+| Kotlin · Ktor CIO Native Image | MySQL | 215.0 | 25.1 | **237.4** | 179.8 | 57.4 | 107.4 | 470.2 |
+| Rust · Axum | MySQL | **226.6** | **22.2** | 235.5 | **223.7** | **8.1** | **11.7** | 484.8 |
+| Crystal · `HTTP::Server` | MySQL | 120.1 | 40.2 | 119.3 | 58.8 | 14.0 | 21.1 | 475.1 |
+| Original Ktor Netty · Temurin 21 JIT | MariaDB | 33.2 | 133.1 | 34.3 | 26.6 | 225.3 | 421.2 | 154.0 |
+| Original Ktor Netty · GraalVM 25 JIT | MariaDB | 33.3 | 137.2 | 35.0 | 27.3 | 215.4 | 479.4 | 153.9 |
+| Original Ktor Netty · GraalVM 25 Native Image | MariaDB | 29.5 | 151.8 | 30.0 | 23.6 | 87.0 | 132.5 | 153.6 |
+
+One favourites exchange is a GET plus a POST. RSS is sampled per process, not whole-system memory. The ports use MySQL 8.4.13; the original uses MariaDB 11.8.9 with different durability settings. Compare complete stacks, not languages in isolation. These builds predate the unified API limits.
+
+[Raw results (including SQLite)](bench/results/) · [Methodology](bench/README.md#memory-of-an-already-authenticated-sync) · [Kotlin 2.4.21 / Ktor 3.6.1 trials](bench/results/kotlin-stack-ab-memory-four.jsonl)
+
+## Same Go backend, different databases
+
+Separate experiment: the same Go binary, four clients and three trials per engine. All three ran with a 128 MiB database cache setting and durable standalone commits. SQLite is in-process and was not part of this experiment.
+
+| Database | History update, ops/s ↑ | Update p95, ms ↓ | History replay, ops/s ↑ | Favourites exchanges/s ↑ | 500-row import, ms ↓ | App peak RSS, MiB ↓ | DB peak anon + shmem, MiB ↓ | DB peak incl. cache, MiB ↓ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| MySQL 9.7.4 | 258.2 | 17.2 | 261.6 | 237.8 | 176.5 | 28.7 | 445.3 | 469.5 |
+| MariaDB 12.3.3 | 259.8 | 16.6 | 262.6 | 254.4 | 170.5 | 24.0 | 124.8 | 163.2 |
+| PostgreSQL 19.0 | 250.3 | 19.0 | 257.9 | 226.1 | **89.7** | 25.7 | **33.9** | **104.0** |
+
+Speed comes from the load trials; memory comes from separate post-restart trials without registration or import. DB memory here is for the whole container (`anon + shmem` and `memory.current`), not the per-process RSS used above. PostgreSQL was an opt-in experiment, not a production storage option.
+
+[Methodology](bench/README.md#one-go-backend-on-mysql-mariadb-and-postgresql) · [Load trials](bench/results/db-comparison-load-four.jsonl) · [Memory trials](bench/results/db-comparison-memory-four.jsonl)
+
 ## Try a port
 
 From the repository root, with Go 1.26+ and the selected port’s toolchain installed:
