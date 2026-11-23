@@ -68,6 +68,46 @@ On one core, an initialized SQLite database let Go, Axum and Crystal restart in 
 
 [1-core trials](bench/results/platform-startup-1core.jsonl) · [4-core trials](bench/results/platform-startup-4core.jsonl) · [Methodology](bench/README.md#deployment-and-cpu-scaling)
 
+## Scaling from one to four cores
+
+Four clients with 200 history and 200 favourite entries each, after process restart, with three trials per build, database and core count. Only the app's CPU affinity changes. SQLite runs inside the app; MySQL and the client each keep two dedicated cores. One core of a Ryzen 7 7800X3D does not model a VPS's CPU quota, shared host or disk.
+
+The throughput columns and p99 are for history updates. Speedup is 4-core throughput divided by 1-core throughput; efficiency divides speedup by four. App CPU per timed operation covers all three sync phases, including amortized warmup and readbacks, but excludes MySQL CPU and password hashing. The fixed four-client profile does not establish saturation or identify what limits scale-up.
+
+### SQLite
+
+| Stack and build | 1 core, ops/s ↑ | 2 cores, ops/s ↑ | 4 cores, ops/s ↑ | 4-core speedup ↑ | 4-core efficiency ↑ | Update p99 1 → 4, ms ↓ | App CPU 1 → 4, ms/op ↓ |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Go · `net/http` | 85.5 | 96.9 | 100.2 | 1.17× | 29% | 138.1 → 69.7 | 8.83 → 10.12 |
+| C# · ASP.NET Core JIT | 66.1 | 65.4 | 67.0 | 1.01× | 25% | 476.3 → 944.4 | 13.74 → 13.76 |
+| C# · ASP.NET Core NativeAOT | 74.6 | 80.3 | 82.7 | 1.11× | 28% | 359.5 → 940.9 | 9.71 → 10.06 |
+| Kotlin · Ktor Netty JIT | 113.1 | 134.5 | 147.9 | 1.31× | 33% | 51.9 → 40.4 | 9.05 → 10.33 |
+| Kotlin · Ktor Netty Native Image | 120.3 | 128.8 | 130.3 | 1.08× | 27% | 49.8 → 51.4 | 5.20 → 5.59 |
+| Kotlin · Ktor CIO JIT | 104.0 | 128.1 | 147.0 | 1.41× | 35% | 81.1 → 40.7 | 9.20 → 10.62 |
+| Kotlin · Ktor CIO Native Image | 119.3 | 128.1 | 131.7 | 1.10× | 28% | 56.7 → 45.1 | 5.26 → 5.73 |
+| Rust · Axum | 156.3 | 159.5 | 165.8 | 1.06× | 27% | 32.6 → 29.1 | 2.62 → 3.15 |
+| Crystal · `HTTP::Server` | 117.2 | 119.2 | 118.4 | 1.01× | 25% | 39.0 → 38.4 | 5.12 → 5.35 |
+
+### MySQL 8.4.13
+
+| Stack and build | 1 core, ops/s ↑ | 2 cores, ops/s ↑ | 4 cores, ops/s ↑ | 4-core speedup ↑ | 4-core efficiency ↑ | Update p99 1 → 4, ms ↓ | App CPU 1 → 4, ms/op ↓ |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Go · `net/http` | 63.6 | 69.9 | 71.0 | 1.12× | 28% | 75.1 → 68.5 | 11.99 → 14.52 |
+| C# · ASP.NET Core JIT | 78.9 | 107.9 | 134.5 | 1.70× | 43% | 89.3 → 40.2 | 7.52 → 6.55 |
+| C# · ASP.NET Core NativeAOT | 136.9 | 133.3 | 184.6 | 1.35× | 34% | 71.5 → 35.2 | 2.39 → 2.76 |
+| Kotlin · Ktor Netty JIT | 113.4 | 154.2 | 189.3 | 1.67× | 42% | 55.4 → 31.7 | 10.38 → 11.72 |
+| Kotlin · Ktor Netty Native Image | 114.6 | 125.7 | 134.5 | 1.17× | 29% | 49.5 → 42.2 | 10.35 → 10.93 |
+| Kotlin · Ktor CIO JIT | 113.7 | 152.2 | 187.7 | 1.65× | 41% | 56.7 → 30.5 | 10.58 → 11.67 |
+| Kotlin · Ktor CIO Native Image | 112.9 | 127.4 | 133.8 | 1.19× | 30% | 51.6 → 40.3 | 10.43 → 10.98 |
+| Rust · Axum | 216.8 | 222.1 | 222.6 | 1.03× | 26% | 39.2 → 29.6 | 1.65 → 2.01 |
+| Crystal · `HTTP::Server` | 88.8 | 88.4 | 89.1 | 1.00× | 25% | 55.1 → 57.9 | 9.40 → 9.53 |
+
+- **For one core, compare absolute throughput first.** Axum had the highest history-update throughput on both databases at every core count. On one core its sampled app RSS peaked at a median of 12.9 MiB on SQLite, including the engine. A small speedup from a fast baseline is not necessarily a drawback.
+- **Extra app cores helped the MySQL JIT builds most.** C# grew 1.70× and Kotlin JIT grew 1.65–1.67× from one to four cores. On SQLite no build gained more than 1.41× in this workload.
+- **Tail latency can move independently of throughput.** Go's SQLite p99 roughly halved with more cores. Both C# builds saw SQLite p99 rise to about 0.94 s at four cores with the larger fixture, despite similar or higher throughput. That does not contradict the small-fixture p95 above; it is a different workload and percentile.
+
+[All 162 trials, including RSS time series and MySQL CPU](bench/results/platform-scaling.jsonl) · [Methodology](bench/README.md#deployment-and-cpu-scaling)
+
 ## Same Go backend, different databases
 
 Separate experiment: the same Go binary, four clients and three trials per engine. All three ran with a 128 MiB database cache setting and durable standalone commits. SQLite is in-process and was not part of this experiment.

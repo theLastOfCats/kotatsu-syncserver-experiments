@@ -119,7 +119,9 @@ Startup is process spawn to the first observed `200 Alive`, with 1 ms sleeps bet
 
 Scaling uses the post-restart JWT-only profile, with four clients, 200 history and 200 favourites entries per client, 25 warmup and 100 timed operations per client per phase. The three trials shuffle the build, database and core-count cells. Compare operation throughput within each build and database: speedup is throughput on N cores divided by throughput on one; divide by N for parallel efficiency. Report p99 as the median of per-trial nearest-rank p99 values, not a fleet-wide tail estimate.
 
-CPU is the user plus system time of each process from client resume through final readback, including warmup and any runtime work in that window. Normalized CPU in the summary divides that total by the number of successful timed operations, so it includes amortized warmup and readback. A favourites exchange is two HTTP requests. RSS peaks use 100 ms samples; approximately 1 s samples are kept separately as a time series. No registration, Argon2, or neighbouring import runs in the measured window.
+The four clients wait for each response before sending the next operation. The generator is pinned to two cores, but its CPU was not sampled. A plateau can reflect client concurrency or CPU, database work, storage, or the application; this profile does not locate the bottleneck or establish maximum throughput.
+
+CPU is the user plus system time of the app and, where applicable, MySQL from client resume through final readback, including warmup and any runtime work in that window. Normalized CPU in the summary divides that total by the number of successful timed operations, so it includes amortized warmup and readback. A favourites exchange is two HTTP requests. RSS peaks use 100 ms samples; approximately 1 s samples are kept separately as a time series. No registration, Argon2, or neighbouring import runs in the measured window.
 
 ## Measurement environment
 
