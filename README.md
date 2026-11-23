@@ -104,6 +104,7 @@ The throughput columns and p99 are for history updates. Speedup is 4-core throug
 
 - **For one core, compare absolute throughput first.** Axum had the highest history-update throughput on both databases at every core count. On one core its sampled app RSS peaked at a median of 12.9 MiB on SQLite, including the engine. A small speedup from a fast baseline is not necessarily a drawback.
 - **Extra app cores helped the MySQL JIT builds most.** C# grew 1.70× and Kotlin JIT grew 1.65–1.67× from one to four cores. On SQLite no build gained more than 1.41× in this workload.
+- **Crystal used one HTTP scheduler thread.** The tested port leaves Crystal 1.22.3's [default execution context](https://github.com/crystal-lang/crystal/blob/1.22.3/src/fiber/execution_context.cr#L110-L141) at parallelism 1. Giving the process more CPUs did not give it more HTTP workers. The flat result describes this build, not a multi-worker Crystal server.
 - **Tail latency can move independently of throughput.** Go's SQLite p99 roughly halved with more cores. Both C# builds saw SQLite p99 rise to about 0.94 s at four cores with the larger fixture, despite similar or higher throughput. That does not contradict the small-fixture p95 above; it is a different workload and percentile.
 
 [All 162 trials, including RSS time series and MySQL CPU](bench/results/platform-scaling.jsonl) · [Methodology](bench/README.md#deployment-and-cpu-scaling)
